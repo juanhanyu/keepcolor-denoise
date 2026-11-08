@@ -7,7 +7,7 @@ Remove compression artifacts, ringing, moiré and fish-scale texture while keepi
 
 ---
 
-## 为什么不用 ESRGAN
+## 为什么不用超分模型
 
 常见做法是「先缩小，再用 ESRGAN 一类的超分模型放大回来」。这类方法去噪靠的是**重绘**：输出的每个像素都是模型重新画出来的，于是：
 
@@ -21,7 +21,7 @@ Denoise 在**原尺寸**上去噪，不缩小、不重画：线条的位置、�
 
 ## 示例
 
-左边原图，右边 Denoise（拖动分割线对比）：
+左边 ESRGAN，右边 Denoise：
 
 <p align="center"><img src="docs/example_text_1.png" width="48%" alt="示例一"> <img src="docs/example_text_2.png" width="48%" alt="示例二"></p>
 
