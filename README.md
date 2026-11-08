@@ -29,6 +29,10 @@ Denoise 在**原尺寸**上去噪，不缩小、不重画：线条的位置、�
 
 <p align="center"><img src="docs/denoise_face.png" width="80%" alt="去噪效果"></p>
 
+去摩尔纹：左边原图，右边 Denoise。
+
+<p align="center"><img src="docs/moire_original.jpg" width="40%" alt="原图"> <img src="docs/moire_denoise.png" width="40%" alt="Denoise"></p>
+
 ## 使用
 
 1. 下载本仓库（**Code → Download ZIP** 后解压，或 `git clone`）。
