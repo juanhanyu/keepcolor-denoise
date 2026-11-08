@@ -1,0 +1,7 @@
+# Denoise.exe installs these by itself (with the right PyTorch build for the graphics card).
+# By hand: install torch + torchvision from pytorch.org first, then: pip install -r requirements.txt
+torch>=2.1
+torchvision
+spandrel>=0.4
+numpy>=1.24
+pillow>=10.0
