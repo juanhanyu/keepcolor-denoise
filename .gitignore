@@ -1,0 +1,7 @@
+# runtime, models and results are made on each computer
+runtime/
+models/
+output/
+config.json
+__pycache__/
+*.part

@@ -1,0 +1,1073 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Denoise 保色去噪</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<script>
+  try { const t = localStorage.getItem("kc.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
+</script>
+<style>
+  :root {
+    --font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+    --bg: #eef2f3; --panel: #fbfcfc; --panel-2: #e9eff0; --line: #dbe3e5; --line-2: #c6d1d4;
+    --text: #13262a; --text-2: #3d5257; --muted: #6c8085; --faint: #9fb0b4;
+    --accent: #0e8f84; --accent-2: #0b7369; --accent-soft: #d8efec; --on-accent: #ffffff;
+    --warn: #b7791f; --warn-soft: #fbf0dc; --err: #c2453b; --err-soft: #f8e3e1; --ok: #2f8a57;
+    --stage: #e2e8ea; --dot: rgba(19, 38, 42, .06); --mask: 225, 92, 70;
+    --shadow: 0 10px 30px rgba(19, 38, 42, .14), 0 2px 6px rgba(19, 38, 42, .06); --glass: rgba(251, 252, 252, .9);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1416; --panel: #131c1f; --panel-2: #1a2629; --line: #243336; --line-2: #314347;
+      --text: #e3eef0; --text-2: #b8c9cc; --muted: #84999d; --faint: #56696d;
+      --accent: #3cc4b6; --accent-2: #5ad6c9; --accent-soft: rgba(60, 196, 182, .14); --on-accent: #062522;
+      --warn: #e6b45a; --warn-soft: rgba(230, 180, 90, .13); --err: #f0857a; --err-soft: rgba(240, 133, 122, .13); --ok: #6fcf97;
+      --stage: #080d0e; --dot: rgba(255, 255, 255, .045); --mask: 240, 120, 98;
+      --shadow: 0 12px 34px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .3); --glass: rgba(19, 28, 31, .9);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1416; --panel: #131c1f; --panel-2: #1a2629; --line: #243336; --line-2: #314347;
+    --text: #e3eef0; --text-2: #b8c9cc; --muted: #84999d; --faint: #56696d;
+    --accent: #3cc4b6; --accent-2: #5ad6c9; --accent-soft: rgba(60, 196, 182, .14); --on-accent: #062522;
+    --warn: #e6b45a; --warn-soft: rgba(230, 180, 90, .13); --err: #f0857a; --err-soft: rgba(240, 133, 122, .13); --ok: #6fcf97;
+    --stage: #080d0e; --dot: rgba(255, 255, 255, .045); --mask: 240, 120, 98;
+    --shadow: 0 12px 34px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .3); --glass: rgba(19, 28, 31, .9);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .45; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  kbd { font: 11px/1 var(--font); padding: 2px 5px; border-radius: 5px; border: 1px solid var(--line-2); border-bottom-width: 2px; color: var(--muted); background: var(--panel); }
+  .num { font-variant-numeric: tabular-nums; }
+  svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  .app { display: grid; grid-template-columns: 320px 1fr; grid-template-rows: 54px 1fr; height: 100vh; }
+  .bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .bar .logo { width: 30px; height: 30px; }
+  .bar .title b { font-size: 15px; letter-spacing: .2px; }
+  .bar .title span { margin-left: 10px; color: var(--muted); font-size: 12.5px; }
+  .bar .right { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px; margin-right: 6px; border-radius: 99px; background: var(--panel-2); color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+  .tb { display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--text-2); font-size: 13px; white-space: nowrap; }
+  .tb:hover { background: var(--panel-2); color: var(--text); }
+  .tb .path { max-width: 210px; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+  .menu { position: absolute; z-index: 40; min-width: 200px; padding: 6px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); }
+  .menu button { display: flex; width: 100%; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; font-size: 13px; text-align: left; }
+  .menu button:hover { background: var(--panel-2); }
+  .menu .where { padding: 6px 10px 8px; color: var(--muted); font-size: 12px; word-break: break-all; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+
+  .side { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  .scroll { flex: 1; overflow-y: auto; padding: 16px 16px 8px; }
+  .sec { padding-bottom: 18px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+  .sec:last-child { border-bottom: 0; }
+  .sec h2 { display: flex; align-items: center; gap: 7px; margin: 0 0 12px; font-size: 13px; font-weight: 650; }
+  .sec h2 .pill { margin-left: auto; }
+  .pill { font-size: 11.5px; line-height: 20px; padding: 0 8px; border-radius: 99px; background: var(--panel-2); color: var(--muted); font-weight: 500; }
+  .pill.on { background: var(--accent-soft); color: var(--accent); }
+  .hint { margin: 10px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+  .file { display: flex; gap: 12px; align-items: center; }
+  .file .thumb { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; background: var(--panel-2); border: 1px solid var(--line); flex: none; display: grid; place-items: center; color: var(--faint); }
+  .file .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file .dims { color: var(--muted); font-size: 12.5px; }
+  .file .meta { min-width: 0; }
+  .status { display: flex; align-items: center; gap: 7px; margin-top: 10px; font-size: 12.5px; color: var(--text-2); }
+  .status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
+  .status.ok .dot { background: var(--ok); } .status.err { color: var(--err); } .status.err .dot { background: var(--err); }
+  .status.run .dot { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+
+  .step { position: relative; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); cursor: pointer; transition: border-color .12s, background .12s; }
+  .step + .step { margin-top: 8px; }
+  .step:hover { border-color: var(--line-2); }
+  .step.on { border-color: var(--accent); background: var(--accent-soft); }
+  .step input { position: absolute; opacity: 0; pointer-events: none; }
+  .step .sw { grid-row: 1 / 3; align-self: center; width: 32px; height: 19px; border-radius: 10px; background: var(--line-2); position: relative; transition: background .12s; }
+  .step .sw::after { content: ""; position: absolute; left: 2px; top: 2px; width: 15px; height: 15px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .12s; }
+  .step input:checked + .sw { background: var(--accent); }
+  .step input:checked + .sw::after { transform: translateX(13px); }
+  .step input:focus-visible + .sw { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .step b { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .step small { color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .warn { font-style: normal; font-size: 11px; font-weight: 600; line-height: 18px; padding: 0 7px; border-radius: 99px; background: var(--warn-soft); color: var(--warn); }
+  .more { display: flex; align-items: center; gap: 6px; margin-top: 10px; color: var(--accent); font-size: 12.5px; }
+  .more svg { transition: transform .15s; }
+  .more[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .adv { margin-top: 8px; padding: 12px; border-radius: 12px; background: var(--panel-2); }
+  .field + .field { margin-top: 14px; }
+  .field .top { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text-2); }
+  .field .top output { color: var(--text); font-weight: 600; }
+  .field .ends { display: flex; justify-content: space-between; color: var(--faint); font-size: 11.5px; }
+  .levels { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 6px; }
+  .levels button { padding: 7px 6px 6px; border-radius: 9px; border: 1px solid var(--line-2); background: var(--panel); text-align: center; font-size: 12.5px; font-weight: 600; }
+  .levels button small { display: block; font-weight: 400; font-size: 11px; color: var(--faint); }
+  .levels button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+  .levels button[aria-pressed="true"] small { color: var(--on-accent); opacity: .7; }
+  .adv .reset { margin-top: 12px; color: var(--accent); font-size: 12.5px; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; margin: 4px 0 0; background: transparent; cursor: pointer; --p: 50%; }
+  input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(var(--accent), var(--accent)) 0 / var(--p) 100% no-repeat, var(--line-2); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%; background: var(--panel); border: 2px solid var(--accent); }
+  input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--line-2); }
+  input[type=range]::-moz-range-progress { height: 4px; background: var(--accent); }
+  input[type=range]:disabled { opacity: .4; }
+  .pending { margin-top: 12px; padding: 8px 10px; border-radius: 9px; background: var(--warn-soft); color: var(--warn); font-size: 12.5px; }
+  .apply { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 38px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--panel); font-weight: 600; font-size: 13px; transition: background .12s; }
+  .btn:hover:not(:disabled) { background: var(--panel-2); }
+  .btn.primary { background: var(--accent); border-color: transparent; color: var(--on-accent); }
+  .btn.primary:hover:not(:disabled) { background: var(--accent-2); }
+  .btn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .btn.wide { width: 100%; }
+  .protect { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12.5px; color: var(--text-2); }
+  .protect .dot { width: 8px; height: 8px; border-radius: 50%; background: rgb(var(--mask)); }
+  .protect button { margin-left: auto; color: var(--accent); font-size: 12.5px; }
+  .foot { border-top: 1px solid var(--line); padding: 12px 16px 14px; }
+  .foot .row { display: flex; gap: 8px; }
+  .foot .row .primary { flex: 1; height: 42px; }
+  .foot .row .btn:not(.primary) { width: 42px; height: 42px; padding: 0; }
+  .foot .note { margin-top: 8px; font-size: 12px; color: var(--muted); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .foot .note a { color: var(--accent); cursor: pointer; }
+
+  .work { display: grid; grid-template-rows: auto 1fr auto; min-width: 0; min-height: 0; padding: 0 14px; }
+  .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 0; }
+  .seg { display: inline-flex; padding: 3px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+  .seg button { height: 28px; padding: 0 12px; border-radius: 7px; font-size: 13px; color: var(--muted); }
+  .seg button.on { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .tbhint { color: var(--faint); font-size: 12.5px; white-space: nowrap; }
+  .zoom { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+  .zoom button { height: 30px; min-width: 30px; padding: 0 8px; border-radius: 8px; color: var(--text-2); }
+  .zoom button:hover { background: var(--panel-2); }
+  .zoom .pct { width: 52px; text-align: center; color: var(--muted); font-size: 12.5px; }
+
+  .stage { position: relative; min-height: 0; overflow: hidden; border-radius: 14px; border: 1px solid var(--line); background-color: var(--stage);
+    background-image: radial-gradient(var(--dot) 1px, transparent 1.2px); background-size: 18px 18px; user-select: none; touch-action: none; }
+  .stage.has { cursor: grab; } .stage.pan { cursor: grabbing; } .stage.paint { cursor: none; }
+  .layer { position: absolute; left: 0; top: 0; transform-origin: 0 0; max-width: none; pointer-events: none; }
+  .stage.px .layer { image-rendering: pixelated; }
+  .frame { position: absolute; pointer-events: none; box-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 14px 40px rgba(0,0,0,.16);
+    background: #fff conic-gradient(#e4e7ea 25%, transparent 0 50%, #e4e7ea 0 75%, transparent 0) 0 0 / 16px 16px; }
+  #tint { opacity: 0; transition: opacity .3s; } #tint.show { opacity: 1; transition: opacity .05s; }
+  .tag { position: absolute; top: 12px; z-index: 3; padding: 4px 10px; border-radius: 7px; font-size: 12px; color: #fff; background: rgba(10, 20, 22, .6); pointer-events: none; }
+  .tag.l { left: 12px; } .tag.r { right: 12px; }
+  .divider { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: rgba(255,255,255,.95); box-shadow: 0 0 0 1px rgba(0,0,0,.12); z-index: 2; cursor: ew-resize; }
+  .divider::before { content: ""; position: absolute; top: 0; bottom: 0; left: -10px; right: -10px; }  /* easier to grab */
+  .knob { cursor: ew-resize; position: absolute; top: 50%; left: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; background: #fff; color: #253; box-shadow: 0 2px 10px rgba(0,0,0,.25); display: grid; place-items: center; }
+  .cursor { position: absolute; z-index: 6; border-radius: 50%; border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.45); pointer-events: none; transform: translate(-50%, -50%); }
+  .cursor.erase { border-style: dashed; }
+  .brushbar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 7; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center;
+    width: max-content; max-width: calc(100% - 24px); padding: 6px; border-radius: 14px; background: var(--glass); backdrop-filter: blur(12px); border: 1px solid var(--line); box-shadow: var(--shadow); cursor: default; }
+  .brushbar .sep { width: 1px; height: 22px; background: var(--line-2); margin: 0 5px; }
+  .brushbar label { display: flex; align-items: center; gap: 7px; padding: 0 6px; font-size: 12.5px; color: var(--text-2); }
+  .brushbar label input { width: 80px; margin: 0; }
+  .brushbar output { width: 40px; text-align: right; color: var(--text); font-weight: 600; font-size: 12.5px; }
+  .ib { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--text-2); }
+  .ib:hover:not(:disabled) { background: var(--panel-2); }
+  .ib.on { background: var(--accent-soft); color: var(--accent); }
+  .done { height: 32px; padding: 0 14px; border-radius: 9px; background: var(--accent); color: var(--on-accent); font-weight: 600; font-size: 13px; }
+  .prog { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 8; display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 12px;
+    background: var(--glass); backdrop-filter: blur(12px); border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 13px; white-space: nowrap; pointer-events: none; }
+  .brushbar:not([hidden]) ~ .prog { top: 68px; }
+  .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--accent-soft); border-top-color: var(--accent); animation: r .8s linear infinite; flex: none; }
+  @keyframes r { to { transform: rotate(360deg); } }
+  .empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; }
+  .empty-card { max-width: 470px; padding: 38px 34px 32px; text-align: center; border-radius: 18px; border: 1.5px dashed var(--line-2); background: color-mix(in srgb, var(--panel) 75%, transparent); }
+  .empty-card img { width: 64px; height: 64px; }
+  .empty-card h3 { margin: 12px 0 6px; font-size: 18px; }
+  .empty-card p { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+  .empty-card small { display: block; margin-top: 14px; color: var(--faint); font-size: 12px; }
+
+  .strip { display: flex; align-items: center; gap: 10px; min-height: 84px; padding: 10px 0 12px; overflow-x: auto; }
+  .item, .add { position: relative; flex: none; width: 60px; height: 60px; border-radius: 11px; }
+  .add { border: 1.5px dashed var(--line-2); color: var(--muted); display: grid; place-items: center; }
+  .add:hover { border-color: var(--accent); color: var(--accent); }
+  .item img { width: 100%; height: 100%; object-fit: cover; border-radius: 11px; border: 1px solid var(--line); display: block; background: var(--panel-2); }
+  .item.cur img { border: 2px solid var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .badge { position: absolute; right: -4px; bottom: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; display: grid; place-items: center; font-size: 11px; font-weight: 700; border: 2px solid var(--bg); }
+  .badge.ok { background: var(--ok); color: #fff; } .badge.err { background: var(--err); color: #fff; } .badge.wait { background: var(--panel-2); color: var(--muted); }
+  .badge.run { background: var(--panel); padding: 0; } .badge.run .spin { width: 12px; height: 12px; }
+  .badge.mask { left: -4px; right: auto; background: rgb(var(--mask)); color: #fff; }
+  .badge.diff { left: -4px; top: -4px; bottom: auto; right: auto; background: var(--warn); color: #fff; }
+  .x { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; background: var(--text); color: var(--bg); display: none; place-items: center; font-size: 12px; line-height: 1; }
+  .item:hover .x { display: grid; }
+  .stripnote { color: var(--faint); font-size: 12px; white-space: nowrap; }
+
+  .drop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter: blur(4px); pointer-events: none; }
+  .drop div { padding: 32px 46px; border-radius: 20px; border: 2px dashed var(--accent); background: var(--panel); font-size: 16px; font-weight: 600; }
+  .toasts { position: fixed; left: 50%; bottom: 104px; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+  .toast { pointer-events: auto; display: flex; align-items: center; gap: 12px; max-width: 580px; padding: 10px 12px 10px 16px; border-radius: 12px; background: #17292d; color: #eef5f6; font-size: 13px; box-shadow: var(--shadow); }
+  .toast.err { background: var(--err); color: #fff; }
+  .toast button { color: inherit; opacity: .7; width: 22px; height: 22px; }
+  .stale { position: fixed; left: 50%; top: 66px; transform: translateX(-50%); z-index: 70; display: flex; align-items: center; gap: 12px; max-width: 760px; padding: 12px 14px 12px 16px;
+    border-radius: 12px; background: var(--err); color: #fff; font-size: 13px; box-shadow: var(--shadow); }
+  .stale button { padding: 6px 12px; border-radius: 8px; background: #fff; color: var(--err); font-weight: 600; white-space: nowrap; }
+  dialog { border: 1px solid var(--line); border-radius: 18px; padding: 0; background: var(--panel); color: var(--text); box-shadow: var(--shadow); max-width: min(720px, calc(100vw - 32px)); }
+  dialog::backdrop { background: rgba(5, 12, 14, .45); backdrop-filter: blur(3px); }
+  .dlg { padding: 22px 24px 20px; }
+  .dlg h3 { margin: 0 0 12px; font-size: 17px; }
+  .dlg h4 { margin: 18px 0 8px; font-size: 13px; color: var(--muted); }
+  .dlg p { margin: 6px 0; font-size: 13px; color: var(--text-2); }
+  .keys { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 26px; font-size: 13px; }
+  .keys div { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; color: var(--text-2); }
+  .keys span:last-child { display: flex; gap: 4px; flex: none; }
+  .dlg-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+  .ended { position: fixed; inset: 0; z-index: 99; display: grid; place-items: center; background: var(--bg); color: var(--muted); font-size: 15px; }
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: 54px auto minmax(420px, 1fr); }
+    .side { border-right: 0; border-bottom: 1px solid var(--line); }
+    .bar .title span, .tb span, .tbhint { display: none; }
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="9.5" r="1.6"/><path d="m4 17 5-5 4 4 3-3 4 4"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+  <symbol id="i-auto" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.4M12 17h.01"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8M6.3 6.6a8 8 0 1 0 11.4 0"/></symbol>
+  <symbol id="i-steps" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8.2 7 10 4-1.8 7-5.5 7-10V6z"/></symbol>
+  <symbol id="i-brush" viewBox="0 0 24 24"><path d="M14.5 4.5 19.5 9.5 11 18a3 3 0 0 1-2.1.9H5v-3.9A3 3 0 0 1 5.9 13z"/><path d="m13 6 5 5"/></symbol>
+  <symbol id="i-eraser" viewBox="0 0 24 24"><path d="m7 21-4-4 10-10 8 8-6 6z"/><path d="M7 21h13M9 11l6 6"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-lr" viewBox="0 0 24 24"><path d="m9 7-5 5 5 5M15 7l5 5-5 5"/></symbol>
+</svg>
+
+<div class="app">
+  <header class="bar">
+    <img class="logo" src="/icon.svg" alt="">
+    <div class="title"><b>Denoise</b><span>保色去噪 · 去伪影 / 振铃 / 摩尔纹 / 鱼鳞纹</span></div>
+    <div class="right">
+      <span class="chip" id="dev" hidden><i></i><span id="devName">本机处理</span></span>
+      <button class="tb" id="outBtn" title="结果保存到哪里"><svg class="i"><use href="#i-folder"/></svg><span>输出</span><span class="path" id="outPath">output</span></button>
+      <button class="tb" id="themeBtn"><svg class="i"><use id="themeIcon" href="#i-auto"/></svg><span id="themeName">跟随系统</span></button>
+      <button class="tb" id="helpBtn"><svg class="i"><use href="#i-help"/></svg><span>说明</span></button>
+      <button class="tb" id="quitBtn"><svg class="i"><use href="#i-power"/></svg><span>结束</span></button>
+    </div>
+  </header>
+
+  <aside class="side">
+    <div class="scroll">
+      <section class="sec">
+        <div class="file">
+          <div class="thumb" id="fBlank"><svg class="i"><use href="#i-image"/></svg></div>
+          <img class="thumb" id="fThumb" alt="" hidden>
+          <div class="meta"><div class="name" id="fName">还没有图片</div><div class="dims num" id="fDims">拖进窗口，或按 Ctrl+O 选择</div></div>
+        </div>
+        <div class="status" id="fStatus" hidden><span class="dot"></span><span id="fStatusText"></span></div>
+      </section>
+
+      <section class="sec">
+        <h2><svg class="i"><use href="#i-steps"/></svg>处理步骤<span class="pill" id="scopePill"></span></h2>
+        <label class="step" id="rowApisr"><input type="checkbox" id="sApisr"><span class="sw"></span>
+          <b>APISR 锐化 <em class="warn">会改变原有色彩</em></b><small>先把线条锐化、清理一遍，再交给后面的步骤</small></label>
+        <label class="step" id="rowDrunet"><input type="checkbox" id="sDrunet"><span class="sw"></span>
+          <b>DRUNet 去噪</b><small>原尺寸去掉伪影、振铃、摩尔纹、鱼鳞纹；不改颜色，不重画线条</small></label>
+        <label class="step" id="rowL0"><input type="checkbox" id="sL0"><span class="sw"></span>
+          <b>L0 平滑</b><small>把色块里残留的细碎起伏压平；很淡的渐变也会被抹平一些</small></label>
+        <button class="more" id="moreBtn" aria-expanded="false" aria-controls="adv">更多设置<svg class="i"><use href="#i-chev"/></svg></button>
+        <div class="adv" id="adv" hidden>
+          <div class="field">
+            <div class="top"><span>APISR 档位</span><output id="lvlNote"></output></div>
+            <div class="levels" id="levels"></div>
+            <div class="hint" style="margin-top:6px">没用过的档位第一次会自动下载；4× 档位每张会慢很多。</div>
+          </div>
+          <div class="field">
+            <div class="top"><span>APISR 强度</span><output class="num" id="vAmount"></output></div>
+            <input type="range" id="sAmount" min="0" max="100" step="5">
+            <div class="ends"><span>更接近原图</span><span>更锐</span></div>
+          </div>
+          <div class="field">
+            <div class="top"><span>DRUNet 强度</span><output class="num" id="vSigma"></output></div>
+            <input type="range" id="sSigma" min="2" max="30" step="1">
+            <div class="ends"><span>留住更多细节</span><span>去得更干净</span></div>
+          </div>
+          <div class="field">
+            <div class="top"><span>L0 强度</span><output class="num" id="vLam"></output></div>
+            <input type="range" id="sLam" min="0.0002" max="0.005" step="0.0001">
+            <div class="ends"><span>留住淡渐变</span><span>色块更平</span></div>
+          </div>
+          <button class="reset" id="resetBtn">恢复默认设置</button>
+        </div>
+        <div class="pending" id="pending" hidden>点击下方应用新设置</div>
+        <div class="apply">
+          <button class="btn" id="applyOne" title="只用到当前这张图">对该图生效</button>
+          <button class="btn primary" id="applyAll" title="用到所有图片，之后加入的图也用它">对所有图生效</button>
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2><svg class="i"><use href="#i-shield"/></svg>局部保护<span class="pill" id="protectPill">未使用</span></h2>
+        <button class="btn wide" id="brushBtn"><svg class="i"><use href="#i-brush"/></svg><span id="brushText">保护笔刷</span><kbd>B</kbd></button>
+        <p class="hint">不想被处理的地方（小字、细纹理、腮红排线）涂上，就按比例换回原图，马上生效，不用重算。</p>
+        <div class="protect" id="protectSum" hidden><span class="dot"></span><span id="protectText"></span><button id="clearMask">清除</button></div>
+      </section>
+    </div>
+    <footer class="foot">
+      <div class="row">
+        <button class="btn primary" id="dlBtn" disabled><svg class="i"><use href="#i-down"/></svg>下载 PNG</button>
+        <button class="btn" id="revealBtn" title="在文件夹中显示" disabled><svg class="i"><use href="#i-folder"/></svg></button>
+      </div>
+      <div class="note" id="footNote">结果会自动保存到输出文件夹</div>
+    </footer>
+  </aside>
+
+  <main class="work">
+    <div class="toolbar">
+      <div class="seg" id="views">
+        <button data-v="cmp" class="on" title="左右对比（1）">对比</button>
+        <button data-v="before" title="原图（2）">原图</button>
+        <button data-v="after" title="结果（3）">结果</button>
+      </div>
+      <span class="tbhint" id="viewHint"></span>
+      <div class="zoom">
+        <button id="zOut" title="缩小">−</button><span class="pct num" id="zPct">—</span><button id="zIn" title="放大">+</button>
+        <button id="zFit" title="适合画面（F）">适合</button><button id="z11" title="原始大小（0）">1:1</button>
+      </div>
+    </div>
+    <div class="stage" id="stage">
+      <div class="frame" id="frame" hidden></div>
+      <img class="layer" id="lOrig" alt="">
+      <canvas class="layer" id="lRes"></canvas>
+      <canvas class="layer" id="tint"></canvas>
+      <span class="tag l" id="tagL" hidden>原图</span><span class="tag r" id="tagR" hidden>结果</span>
+      <div class="divider" id="divider" hidden><div class="knob" id="knob" tabindex="0" role="slider" aria-label="对比分割线"><svg class="i"><use href="#i-lr"/></svg></div></div>
+      <div class="brushbar" id="brushbar" hidden>
+        <div class="seg"><button data-t="brush" class="on" title="画笔（B）"><svg class="i"><use href="#i-brush"/></svg></button><button data-t="erase" title="橡皮（E，或右键拖动）"><svg class="i"><use href="#i-eraser"/></svg></button></div>
+        <span class="sep"></span>
+        <label title="画笔大小，按原图像素（[ ]）">大小<input type="range" id="bSize" min="2" max="300" step="1"><output class="num" id="bSizeV"></output></label>
+        <label title="接下来几笔换回原图的比例；100% 就是完全不处理">恢复原图<input type="range" id="bMix" min="5" max="100" step="5"><output class="num" id="bMixV"></output></label>
+        <label title="边缘渐变宽度">柔边<input type="range" id="bSoft" min="0" max="120" step="2"><output class="num" id="bSoftV"></output></label>
+        <span class="sep"></span>
+        <button class="ib" id="bUndo" title="撤销（Ctrl+Z）"><svg class="i"><use href="#i-undo"/></svg></button>
+        <button class="ib" id="bRedo" title="重做（Ctrl+Shift+Z）"><svg class="i"><use href="#i-redo"/></svg></button>
+        <button class="ib" id="bShow" title="一直显示涂过的范围（按住 M 临时显示）"><svg class="i"><use href="#i-eye"/></svg></button>
+        <button class="ib" id="bClear" title="清除全部（可撤销）"><svg class="i"><use href="#i-trash"/></svg></button>
+        <button class="done" id="bDone" title="完成（B 或 Esc）">完成</button>
+      </div>
+      <div class="prog" id="prog" hidden><span class="spin"></span><span id="progText">处理中</span><span class="num" id="progTime" style="color:var(--muted)"></span></div>
+      <div class="cursor" id="cursor" hidden></div>
+      <div class="empty" id="empty">
+        <div class="empty-card">
+          <img src="/icon.svg" alt="">
+          <h3>拖入图片开始</h3>
+          <p>放进来就按「处理步骤」里的设置自动处理，可以一次放多张，也能 Ctrl+V 粘贴。</p>
+          <button class="btn primary" id="pickBtn"><svg class="i"><use href="#i-plus"/></svg>选择图片</button>
+          <small>PNG · JPEG · WebP · BMP · GIF · TIFF · AVIF · 图片只在这台电脑上处理</small>
+        </div>
+      </div>
+    </div>
+    <div class="strip"><button class="add" id="addBtn" title="添加图片（Ctrl+O）"><svg class="i"><use href="#i-plus"/></svg></button><div id="items" style="display:flex;gap:12px;align-items:center"></div><span class="stripnote" id="stripNote"></span></div>
+  </main>
+</div>
+
+<div class="menu" id="outMenu" hidden>
+  <div class="where" id="outWhere"></div>
+  <button id="outOpen"><svg class="i"><use href="#i-folder"/></svg>打开输出文件夹</button>
+  <button id="outChoose"><svg class="i"><use href="#i-steps"/></svg>更改输出文件夹…</button>
+  <button id="outReset"><svg class="i"><use href="#i-undo"/></svg>恢复默认（程序目录下的 output）</button>
+</div>
+<div class="drop" id="drop" hidden><div>松开即可加入</div></div>
+<div class="toasts" id="toasts"></div>
+<div class="stale" id="stale" hidden><span>后台程序还是旧版本，和这个页面对不上（更新后没有重启）。点右边按钮结束它，再重新打开 Denoise.exe。</span><button id="staleQuit">结束旧后台</button></div>
+<input type="file" id="fileInput" accept="image/*,.tif,.tiff,.tga,.avif,.jfif" multiple hidden>
+
+<dialog id="helpDlg"><div class="dlg">
+  <h3>Denoise 怎么用</h3>
+  <p>放进图片就按「处理步骤」处理：默认只开 <b>DRUNet 去噪</b>，并且对所有图片生效。改了设置后点 <b>对该图生效</b> 只改当前这张，点 <b>对所有图生效</b> 改全部（之后加入的图也用它）。</p>
+  <p>步骤顺序：APISR 锐化 → DRUNet 去噪 → L0 平滑。APISR 会改变原有色彩；DRUNet 和 L0 不改颜色。</p>
+  <p>结果自动保存到输出文件夹（默认是程序目录下的 output，右上角可以改）。保护笔刷涂过的地方按比例换回原图，保存的就是你看到的。</p>
+  <h4>快捷键</h4>
+  <div class="keys">
+    <div><span>添加 / 粘贴图片</span><span><kbd>Ctrl</kbd><kbd>O</kbd> <kbd>Ctrl</kbd><kbd>V</kbd></span></div>
+    <div><span>上一张 / 下一张</span><span><kbd>←</kbd> <kbd>→</kbd></span></div>
+    <div><span>对比 / 原图 / 结果</span><span><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></span></div>
+    <div><span>原图 ↔ 结果</span><span><kbd>X</kbd></span></div>
+    <div><span>按住看原图</span><span><kbd>Z</kbd></span></div>
+    <div><span>适合画面 / 1:1</span><span><kbd>F</kbd> <kbd>0</kbd></span></div>
+    <div><span>保护笔刷 / 橡皮</span><span><kbd>B</kbd> <kbd>E</kbd></span></div>
+    <div><span>笔刷大小</span><span><kbd>[</kbd> <kbd>]</kbd></span></div>
+    <div><span>撤销 / 重做</span><span><kbd>Ctrl</kbd><kbd>Z</kbd> <kbd>+Shift</kbd></span></div>
+    <div><span>按住看涂过的范围</span><span><kbd>M</kbd></span></div>
+    <div><span>拖动画面（涂抹时）</span><span>按住 <kbd>空格</kbd></span></div>
+    <div><span>下载</span><span><kbd>Ctrl</kbd><kbd>S</kbd></span></div>
+  </div>
+  <div class="dlg-foot"><button class="btn primary" id="helpClose">知道了</button></div>
+</div></dialog>
+<dialog id="quitDlg"><div class="dlg" style="width:380px">
+  <h3>结束 Denoise？</h3>
+  <p>已经处理好的结果都在输出文件夹里。下次双击 Denoise.exe 再打开。</p>
+  <div class="dlg-foot"><button class="btn" id="quitNo">取消</button><button class="btn primary" id="quitYes">结束</button></div>
+</div></dialog>
+
+<script>
+"use strict";
+const TOKEN = "__TOKEN__", PAGE_API = 1;
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const save = (k, v) => { try { localStorage.setItem("kc." + k, JSON.stringify(v)); } catch {} };
+const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem("kc." + k)); return v ?? d; } catch { return d; } };
+const mk = (w, h) => { const c = document.createElement("canvas"); if (w) { c.width = w; c.height = h; } return c; };
+const ctx = (c, read) => c.getContext("2d", read ? { willReadFrequently: true } : undefined);
+const fmtLam = v => (+v).toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+const jobId = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()).replace(/-/g, "");
+
+/* ---------------- settings ---------------- */
+const LEVELS = [["2x_rrdb", "2× RRDB", "18 MB · 默认"], ["4x_rrdb", "4× RRDB", "18 MB"], ["4x_grl", "4× GRL", "6.5 MB · 慢"], ["4x_dat", "4× DAT", "87 MB · 最慢"]];
+const DEFAULTS = { apisr: false, apisr_model: "2x_rrdb", apisr_amount: 100, drunet: true, sigma: 10, l0: false, lam: 0.001 };
+const norm = s => ({ ...DEFAULTS, ...(s || {}), apisr_model: LEVELS.some(l => l[0] === s?.apisr_model) ? s.apisr_model : "2x_rrdb" });
+// what changes the result: amount and level matter only with APISR on, the L0 strength only with L0 on
+const skey = s => { s = norm(s); return [s.apisr ? `a${s.apisr_model}:${s.apisr_amount}` : "", s.drunet ? `d${s.sigma}` : "", s.l0 ? `l${(+s.lam).toFixed(4)}` : ""].join("|"); };
+const same = (a, b) => !!(a && b) && skey(a) === skey(b);
+function describe(s) {
+  s = norm(s);
+  const parts = [];
+  if (s.apisr) parts.push(`APISR ${LEVELS.find(l => l[0] === s.apisr_model)[1]}${s.apisr_amount < 100 ? " " + s.apisr_amount + "%" : ""}`);
+  if (s.drunet) parts.push(`DRUNet${s.sigma !== 10 ? " " + s.sigma : ""}`);
+  if (s.l0) parts.push(`L0 ${fmtLam(s.lam)}`);
+  return parts.join(" + ") || "不处理（原图）";
+}
+
+const S = {
+  items: [], cur: null, queue: [], running: null, info: {},
+  defaults: norm(load("defaults", DEFAULTS)), draft: null,
+  view: "cmp", split: 0.5, vp: null, peek: false, space: false,
+  brush: { on: false, tool: "brush", size: 24, mix: 90, soft: 12, show: false, painting: false, peekMask: false },
+};
+S.draft = { ...S.defaults };
+let nextId = 1;
+const stage = $("#stage"), lOrig = $("#lOrig"), lRes = $("#lRes"), tint = $("#tint");
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { "X-Token": TOKEN, ...(opts.headers || {}) } });
+  let j = null;
+  if ((r.headers.get("Content-Type") || "").includes("json")) j = await r.json();
+  if (!r.ok) throw new Error((j && j.error) || r.statusText || "出错了");
+  if (j === null) throw new Error("后台回复不对：可能是旧版本，请结束后重新打开 Denoise.exe");
+  return j;
+}
+function toast(msg, kind = "", ms = 4200) {
+  const t = document.createElement("div");
+  t.className = "toast " + kind;
+  t.append(Object.assign(document.createElement("span"), { textContent: msg }));
+  const x = Object.assign(document.createElement("button"), { textContent: "×", title: "关闭" });
+  x.onclick = () => t.remove(); t.append(x);
+  $("#toasts").append(t);
+  setTimeout(() => t.remove(), ms);
+}
+function loadImg(url) {
+  return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error("图片加载失败")); im.src = url; });
+}
+
+/* ---------------- top bar ---------------- */
+function refreshInfo() {
+  return fetch("/api/info").then(r => r.json()).then(j => {
+    S.info = j;
+    $("#dev").hidden = false;
+    $("#devName").textContent = "本机处理 · " + (j.device || "CPU").replace(/^(NVIDIA|AMD)\s+/, "").replace(/^(GeForce|Radeon)\s+/, "");
+    $("#outPath").textContent = j.custom_output ? j.output.split(/[\\/]/).filter(Boolean).pop() : "output";
+    $("#outBtn").title = "输出到：" + j.output;
+    $("#outWhere").textContent = j.output;
+    $("#stale").hidden = j.api === PAGE_API;
+    renderLevels();
+  }).catch(() => {});
+}
+refreshInfo();
+$("#staleQuit").onclick = async () => { try { await api("/api/quit", { method: "POST" }); } catch {} ended("旧后台已结束。请重新打开 Denoise.exe。"); };
+const THEMES = [["system", "跟随系统", "#i-auto"], ["light", "浅色", "#i-sun"], ["dark", "深色", "#i-moon"]];
+let theme = load("theme", "system");
+function applyTheme() {
+  const t = THEMES.find(x => x[0] === theme) || THEMES[0];
+  if (theme === "system") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = theme;
+  $("#themeName").textContent = t[1]; $("#themeIcon").setAttribute("href", t[2]);
+  if (S.cur) drawTint();
+}
+$("#themeBtn").onclick = () => { theme = THEMES[(THEMES.findIndex(x => x[0] === theme) + 1) % 3][0]; save("theme", theme); applyTheme(); };
+applyTheme();
+$("#outBtn").onclick = e => {
+  const m = $("#outMenu"), r = $("#outBtn").getBoundingClientRect();
+  m.hidden = !m.hidden;
+  m.style.top = r.bottom + 6 + "px"; m.style.left = Math.max(8, r.right - 260) + "px"; m.style.width = "260px";
+  e.stopPropagation();
+};
+addEventListener("click", e => { if (!e.target.closest("#outMenu")) $("#outMenu").hidden = true; });
+$("#outOpen").onclick = () => api("/api/reveal", { method: "POST" }).catch(e => toast(e.message, "err"));
+$("#outChoose").onclick = async () => {
+  $("#outMenu").hidden = true;
+  try { const j = await api("/api/output/choose", { method: "POST" }); await refreshInfo(); if (j.changed) toast("结果会保存到：" + j.output); }
+  catch (e) { toast(e.message, "err"); }
+};
+$("#outReset").onclick = async () => {
+  $("#outMenu").hidden = true;
+  try { const j = await api("/api/output/reset", { method: "POST" }); await refreshInfo(); toast("恢复默认：" + j.output); } catch (e) { toast(e.message, "err"); }
+};
+$("#helpBtn").onclick = () => $("#helpDlg").showModal();
+$("#helpClose").onclick = () => $("#helpDlg").close();
+$("#quitBtn").onclick = () => $("#quitDlg").showModal();
+$("#quitNo").onclick = () => $("#quitDlg").close();
+$("#quitYes").onclick = async () => { $("#quitDlg").close(); try { await api("/api/quit", { method: "POST" }); } catch {} ended("Denoise 已结束，可以关闭这个页面了。"); };
+for (const d of $$("dialog")) d.addEventListener("click", e => { if (e.target === d) d.close(); });
+function ended(text) { const d = document.createElement("div"); d.className = "ended"; d.textContent = text; document.body.append(d); }
+
+/* ---------------- adding images ---------------- */
+const pick = () => $("#fileInput").click();
+$("#fileInput").onchange = e => { if (e.target.files.length) addFiles(e.target.files); e.target.value = ""; };
+$("#pickBtn").onclick = $("#addBtn").onclick = pick;
+let dragDepth = 0;
+const hasFiles = e => [...(e.dataTransfer?.types || [])].includes("Files");
+addEventListener("dragenter", e => { if (hasFiles(e)) { e.preventDefault(); dragDepth++; $("#drop").hidden = false; } });
+addEventListener("dragover", e => { if (hasFiles(e)) e.preventDefault(); });
+addEventListener("dragleave", e => { if (hasFiles(e) && --dragDepth <= 0) { dragDepth = 0; $("#drop").hidden = true; } });
+addEventListener("drop", e => { e.preventDefault(); dragDepth = 0; $("#drop").hidden = true; if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+addEventListener("paste", e => {
+  const files = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith("image/"));
+  if (files.length) { e.preventDefault(); addFiles(files, true); }
+});
+function thumbOf(img) {
+  const k = 120 / Math.max(img.naturalWidth, img.naturalHeight), c = mk(Math.max(1, Math.round(img.naturalWidth * k)), Math.max(1, Math.round(img.naturalHeight * k)));
+  ctx(c).drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL("image/png");
+}
+async function addFiles(list, pasted) {
+  const files = [...list].filter(f => /^image\//.test(f.type) || /\.(png|jpe?g|jfif|webp|bmp|gif|tiff?|avif|tga)$/i.test(f.name));
+  if (!files.length) return toast("没有可用的图片", "err");
+  let first = null;
+  for (const f of files) {
+    const id = nextId++;
+    const name = pasted || !f.name || f.name === "image.png" ? `粘贴的图片-${id}.png` : f.name;
+    let j;
+    try { j = await api("/api/add?name=" + encodeURIComponent(name), { method: "POST", body: f }); }
+    catch (e) { toast(`${name}：${e.message}`, "err", 6500); continue; }
+    const it = { id, sid: j.id, name, stem: name.replace(/\.[^.]+$/, ""), w: j.w, h: j.h, alpha: j.alpha, src: `/api/file/${j.id}.png`, srcImg: null,
+      thumb: "", settings: { ...S.defaults }, result: null, status: "queued", err: "",
+      paint: mk(j.w, j.h), weights: mk(j.w, j.h), hasMask: false, undo: [], redo: [], saved: null, saveTimer: 0 };
+    { const g = ctx(it.paint, true); g.fillStyle = "#000"; g.fillRect(0, 0, it.w, it.h); }
+    // decoded in the background: a hidden tab may hold decoding back, and processing must not wait for that
+    loadImg(it.src).then(img => { it.srcImg = img; it.thumb = thumbOf(img); renderStrip(); if (S.cur === it) { syncPanel(); composite(); } })
+      .catch(() => toast(`${name}：原图显示不出来`, "err"));
+    S.items.push(it);
+    first ||= it;
+    enqueue(it);
+  }
+  renderStrip();
+  if (first) select(first);
+}
+function removeItem(it) {
+  if (S.running === it) cancelRun(it);
+  it.removed = true;
+  S.queue = S.queue.filter(x => x !== it);
+  const i = S.items.indexOf(it);
+  S.items.splice(i, 1);
+  if (S.cur === it) { const n = S.items[Math.min(i, S.items.length - 1)]; n ? select(n) : clearSelection(); }
+  renderStrip();
+}
+function clearSelection() { S.cur = null; S.vp = null; setBrush(false); syncPanel(); render(); }
+
+/* ---------------- processing queue ---------------- */
+function enqueue(it, force) {
+  if (S.running === it) { if (force || !same(it.settings, it.runSettings)) { it.again = true; cancelRun(it); } return; }
+  if (!force && it.result && same(it.settings, it.result.settings)) return;
+  if (!S.queue.includes(it)) S.queue.push(it);
+  it.status = it.result ? it.status : "queued";
+  renderStrip(); syncPanel(); pump();
+}
+function cancelRun(it) {
+  if (!it.ctrl) return;
+  it.ctrl.abort();
+  api(`/api/cancel?job=${it.job}`, { method: "POST" }).catch(() => {});
+}
+async function pump() {
+  if (S.running) return;
+  const it = S.queue.shift();
+  if (!it) return;
+  S.running = it;
+  await runItem(it);
+  S.running = null;
+  if (it.again && !it.removed) { it.again = false; S.queue.unshift(it); }
+  pump();
+}
+let progTimer = 0;
+async function runItem(it) {
+  const s = norm(it.settings);
+  it.runSettings = s; it.job = jobId(); it.ctrl = new AbortController();
+  it.status = "running"; it.err = "";
+  const t0 = performance.now();
+  renderStrip(); syncPanel(); render();
+  clearInterval(progTimer);
+  progTimer = setInterval(async () => {
+    const sec = (performance.now() - t0) / 1000;
+    it.live = sec;
+    if (S.cur !== it) { $("#prog").hidden = true; return; }
+    $("#prog").hidden = sec < 0.3;
+    $("#progTime").textContent = sec.toFixed(1) + " 秒";
+    if (sec > 0.3) { try { const p = await (await fetch("/api/progress")).json(); if (p.stage) $("#progText").textContent = p.stage; } catch {} }
+    syncStatus();
+  }, 200);
+  try {
+    const q = new URLSearchParams({ id: it.sid, job: it.job, apisr: s.apisr ? 1 : 0, apisr_model: s.apisr_model, apisr_amount: s.apisr_amount,
+      drunet: s.drunet ? 1 : 0, sigma: s.sigma, l0: s.l0 ? 1 : 0, lam: s.lam });
+    const j = await api("/api/process?" + q, { method: "POST", signal: it.ctrl.signal });
+    if (it.removed) return;
+    it.result = { rid: j.rid, url: `/api/file/${j.rid}.png`, img: null, settings: s, elapsed: j.elapsed };  // drawn when shown
+    it.status = "done";
+    if (S.cur === it) composite();
+    scheduleSave(it, 0);
+  } catch (e) {
+    if (e.name === "AbortError" || it.ctrl.signal.aborted) it.status = it.result ? "done" : "queued";
+    else { it.status = it.result ? "done" : "error"; it.err = e.message; toast(`${it.name}：${e.message}`, "err", 7000); }
+  } finally {
+    clearInterval(progTimer);
+    $("#prog").hidden = true; $("#progText").textContent = "处理中";
+    it.ctrl = null; it.runSettings = null;
+    renderStrip(); syncPanel(); render();
+  }
+}
+
+/* ---------------- settings panel ---------------- */
+function renderLevels() {
+  const box = $("#levels"), have = S.info.apisr || {};
+  box.textContent = "";
+  for (const [k, label, note] of LEVELS) {
+    const b = document.createElement("button");
+    b.setAttribute("aria-pressed", S.draft.apisr_model === k);
+    b.innerHTML = `${label}<small>${have[k] && have[k].mb ? "已下载" : note}</small>`;
+    b.onclick = () => editDraft({ apisr_model: k });
+    box.append(b);
+  }
+  const lvl = LEVELS.find(l => l[0] === S.draft.apisr_model);
+  $("#lvlNote").textContent = lvl ? lvl[1] : "";
+}
+function paintRange(el) { el.style.setProperty("--p", ((el.value - el.min) / (el.max - el.min) * 100) + "%"); }
+function editDraft(patch) { S.draft = norm({ ...S.draft, ...patch }); syncSettings(); }
+function baseline() { return S.cur ? S.cur.settings : S.defaults; }
+function syncSettings() {
+  const d = S.draft;
+  $("#sApisr").checked = d.apisr; $("#sDrunet").checked = d.drunet; $("#sL0").checked = d.l0;
+  $("#rowApisr").classList.toggle("on", d.apisr); $("#rowDrunet").classList.toggle("on", d.drunet); $("#rowL0").classList.toggle("on", d.l0);
+  $("#sAmount").value = d.apisr_amount; $("#vAmount").textContent = d.apisr_amount + "%"; $("#sAmount").disabled = !d.apisr;
+  $("#sSigma").value = d.sigma; $("#vSigma").textContent = d.sigma; $("#sSigma").disabled = !d.drunet;
+  $("#sLam").value = d.lam; $("#vLam").textContent = fmtLam(d.lam); $("#sLam").disabled = !d.l0;
+  for (const id of ["#sAmount", "#sSigma", "#sLam"]) paintRange($(id));
+  renderLevels();
+  const dirty = !same(d, baseline());
+  $("#pending").hidden = !dirty;
+  const everyone = S.items.length > 0 && S.items.every(it => same(it.settings, S.defaults));
+  $("#scopePill").textContent = !S.cur ? "新图都用这个" : everyone && same(S.cur.settings, S.defaults) ? "所有图一样" : "这张单独设置";
+  $("#scopePill").className = "pill" + (S.cur && !(everyone && same(S.cur.settings, S.defaults)) ? " on" : "");
+  $("#applyOne").disabled = !S.cur;
+}
+$("#sApisr").onchange = e => editDraft({ apisr: e.target.checked });
+$("#sDrunet").onchange = e => editDraft({ drunet: e.target.checked });
+$("#sL0").onchange = e => editDraft({ l0: e.target.checked });
+for (const [id, key, out] of [["#sAmount", "apisr_amount", v => v + "%"], ["#sSigma", "sigma", v => v], ["#sLam", "lam", fmtLam]]) {
+  $(id).addEventListener("input", e => { const v = +e.target.value; $(id.replace("#s", "#v")).textContent = out(v); paintRange(e.target); });
+  $(id).addEventListener("change", e => editDraft({ [key]: +(+e.target.value).toFixed(key === "lam" ? 4 : 0) }));
+}
+$("#moreBtn").onclick = () => { const open = $("#adv").hidden; $("#adv").hidden = !open; $("#moreBtn").setAttribute("aria-expanded", open); save("adv", open); };
+if (load("adv", false)) { $("#adv").hidden = false; $("#moreBtn").setAttribute("aria-expanded", "true"); }
+$("#resetBtn").onclick = () => { S.draft = { ...DEFAULTS }; syncSettings(); };
+$("#applyOne").onclick = () => {
+  if (!S.cur) return;
+  S.cur.settings = { ...S.draft };
+  enqueue(S.cur);
+  syncSettings(); toast(`这张图：${describe(S.draft)}`);
+};
+$("#applyAll").onclick = () => {
+  S.defaults = { ...S.draft }; save("defaults", S.defaults);
+  for (const it of S.items) { it.settings = { ...S.draft }; enqueue(it); }
+  syncSettings(); toast(`所有图片${S.items.length ? `（${S.items.length} 张）` : ""}和之后加入的图：${describe(S.draft)}`);
+};
+
+/* ---------------- compositing & protection mask ---------------- */
+// weights = the painted strokes (grey = share of the original), widened by a soft edge; painted pixels keep their own value
+function buildWeights(it) {
+  const g = ctx(it.weights);
+  g.globalCompositeOperation = "source-over";
+  g.filter = "none"; g.fillStyle = "#000"; g.fillRect(0, 0, it.w, it.h);
+  if (S.brush.soft > 0) { g.filter = `blur(${S.brush.soft / 2}px)`; g.drawImage(it.paint, 0, 0); g.filter = "none"; g.globalCompositeOperation = "lighten"; }
+  g.drawImage(it.paint, 0, 0);
+  g.globalCompositeOperation = "source-over";
+}
+const alphaC = mk(), tmpC = mk();
+function weightsAsAlpha(it) {  // grey -> alpha, for drawing the original through it
+  alphaC.width = it.w; alphaC.height = it.h;
+  const src = ctx(it.weights, true).getImageData(0, 0, it.w, it.h), d = src.data;
+  for (let i = 0; i < d.length; i += 4) { d[i + 3] = d[i]; d[i] = d[i + 1] = d[i + 2] = 255; }
+  ctx(alphaC).putImageData(src, 0, 0);
+  return alphaC;
+}
+function resultImg(it) {  // the result picture, loaded the first time it is needed; null until then
+  const r = it.result;
+  if (!r) return null;
+  if (!r.img && !r.loading) {
+    r.loading = loadImg(r.url).then(img => { r.img = img; if (S.cur === it && it.result === r) composite(); })
+      .catch(() => { r.loading = null; });
+  }
+  return r.img;
+}
+function composite() {
+  const it = S.cur;
+  if (!it) return;
+  lRes.width = it.w; lRes.height = it.h;
+  const g = ctx(lRes), res = resultImg(it);
+  g.clearRect(0, 0, it.w, it.h);
+  if (res || it.srcImg) g.drawImage(res || it.srcImg, 0, 0);
+  if (res && it.srcImg && it.hasMask) {
+    buildWeights(it);
+    const a = weightsAsAlpha(it);
+    tmpC.width = it.w; tmpC.height = it.h;
+    const t = ctx(tmpC);
+    t.globalCompositeOperation = "source-over"; t.clearRect(0, 0, it.w, it.h); t.drawImage(it.srcImg, 0, 0);
+    t.globalCompositeOperation = "destination-in"; t.drawImage(a, 0, 0); t.globalCompositeOperation = "source-over";
+    g.drawImage(tmpC, 0, 0);
+  }
+  drawTint();
+  render();
+}
+let rafQueued = false;
+const scheduleComposite = () => { if (!rafQueued) { rafQueued = true; requestAnimationFrame(() => { rafQueued = false; composite(); }); } };
+function drawTint() {
+  const it = S.cur;
+  if (!it) return;
+  tint.width = it.w; tint.height = it.h;
+  const g = ctx(tint);
+  g.clearRect(0, 0, it.w, it.h);
+  if (!it.hasMask) return;
+  buildWeights(it);
+  g.drawImage(weightsAsAlpha(it), 0, 0);
+  g.globalCompositeOperation = "source-in";
+  g.fillStyle = `rgba(${getComputedStyle(document.documentElement).getPropertyValue("--mask").trim()}, .55)`;
+  g.fillRect(0, 0, it.w, it.h);
+  g.globalCompositeOperation = "source-over";
+}
+
+/* ---------------- saving ---------------- */
+function scheduleSave(it, delay = 800) {
+  if (!it.result) return;
+  clearTimeout(it.saveTimer);
+  it.saveTimer = setTimeout(() => saveItem(it), delay);
+}
+async function saveItem(it) {
+  if (!it.result || it.removed) return null;
+  let body = null;
+  if (it.hasMask) { buildWeights(it); body = await new Promise(r => it.weights.toBlob(r, "image/png")); }
+  try {
+    const j = await api(`/api/save?id=${it.sid}&rid=${it.result.rid}&name=${encodeURIComponent(it.name)}`, { method: "POST", body });
+    it.saved = j;
+  } catch (e) { it.saved = null; toast("自动保存失败：" + e.message, "err"); }
+  if (it === S.cur) syncPanel();
+  return it.saved;
+}
+async function download() {
+  const it = S.cur;
+  if (!it || !it.result) return;
+  clearTimeout(it.saveTimer);
+  const s = await saveItem(it);
+  if (!s) return;
+  const a = document.createElement("a");
+  a.href = "/api/out?file=" + encodeURIComponent(s.file); a.download = s.file; a.click();
+}
+$("#dlBtn").onclick = download;
+$("#revealBtn").onclick = () => S.cur?.saved && api("/api/reveal?path=" + encodeURIComponent(S.cur.saved.path), { method: "POST" }).catch(e => toast(e.message, "err"));
+
+/* ---------------- panel & strip ---------------- */
+function syncStatus() {
+  const it = S.cur, el = $("#fStatus");
+  if (!it) { el.hidden = true; return; }
+  el.hidden = false;
+  let cls = "", txt = "";
+  if (it.status === "running") { cls = "run"; txt = `处理中 · ${(it.live || 0).toFixed(1)} 秒`; }
+  else if (it.status === "queued") { cls = "run"; txt = `排队中（前面 ${S.queue.indexOf(it) + (S.running ? 1 : 0)} 张）`; }
+  else if (it.status === "error") { cls = "err"; txt = "出错：" + it.err; }
+  else if (it.result) {
+    cls = "ok"; txt = `${describe(it.result.settings)} · ${it.result.elapsed.toFixed(1)} 秒`;
+    if (!same(it.settings, it.result.settings)) { cls = "run"; txt = "设置已应用，等待重新处理…"; }
+  }
+  el.className = "status " + cls;
+  $("#fStatusText").textContent = txt;
+}
+function syncPanel() {
+  const it = S.cur;
+  $("#fThumb").hidden = !(it && it.thumb); $("#fBlank").hidden = !!(it && it.thumb);
+  if (it) { if (it.thumb) $("#fThumb").src = it.thumb; $("#fName").textContent = it.name; $("#fName").title = it.name; }
+  else $("#fName").textContent = "还没有图片";
+  $("#fDims").textContent = it ? `${it.w} × ${it.h}${it.alpha ? " · 透明背景" : ""}` : "拖进窗口，或按 Ctrl+O 选择";
+  syncStatus(); syncSettings();
+  $("#dlBtn").disabled = !(it && it.result);
+  $("#revealBtn").disabled = !(it && it.saved);
+  $("#brushBtn").disabled = !it;
+  $("#brushBtn").classList.toggle("on", S.brush.on);
+  $("#brushText").textContent = S.brush.on ? "完成涂抹" : "保护笔刷";
+  const m = !!(it && it.hasMask);
+  $("#protectPill").textContent = m ? "使用中" : "未使用"; $("#protectPill").className = "pill" + (m ? " on" : "");
+  $("#protectSum").hidden = !m;
+  if (m) $("#protectText").textContent = `已涂保护区 · 新笔画 ${S.brush.mix}% · 柔边 ${S.brush.soft} px`;
+  const note = $("#footNote");
+  note.textContent = "";
+  if (it && it.saved) {
+    note.append("已自动保存：");
+    const a = Object.assign(document.createElement("a"), { textContent: it.saved.file, title: it.saved.path });
+    a.onclick = () => $("#revealBtn").click();
+    note.append(a);
+  } else note.textContent = "结果会自动保存到输出文件夹";
+  $("#bUndo").disabled = !(it && it.undo.length); $("#bRedo").disabled = !(it && it.redo.length); $("#bClear").disabled = !m;
+}
+function renderStrip() {
+  const box = $("#items");
+  box.textContent = "";
+  for (const it of S.items) {
+    const d = document.createElement("div");
+    d.className = "item" + (it === S.cur ? " cur" : ""); d.title = `${it.name}\n${describe(it.settings)}`;
+    const img = Object.assign(document.createElement("img"), { alt: it.name });
+    if (it.thumb) img.src = it.thumb;
+    d.append(img);
+    const b = document.createElement("span"); b.className = "badge";
+    if (it.status === "running") { b.classList.add("run"); b.innerHTML = '<span class="spin"></span>'; }
+    else if (it.status === "queued" || (it.result && !same(it.settings, it.result.settings))) { b.classList.add("wait"); b.textContent = Math.max(1, S.queue.indexOf(it) + 1); }
+    else if (it.status === "error") { b.classList.add("err"); b.textContent = "!"; b.title = it.err; }
+    else if (it.result) { b.classList.add("ok"); b.textContent = "✓"; }
+    if (b.className !== "badge") d.append(b);
+    if (it.hasMask) { const m = document.createElement("span"); m.className = "badge mask"; m.title = "有保护区"; m.innerHTML = '<svg class="i" style="width:11px;height:11px"><use href="#i-shield"/></svg>'; d.append(m); }
+    else if (!same(it.settings, S.defaults)) { const m = document.createElement("span"); m.className = "badge diff"; m.textContent = "单"; m.title = "这张单独设置：" + describe(it.settings); d.append(m); }
+    const x = Object.assign(document.createElement("button"), { className: "x", textContent: "×", title: "移除" });
+    x.onclick = e => { e.stopPropagation(); removeItem(it); };
+    d.append(x);
+    d.onclick = () => select(it);
+    box.append(d);
+  }
+  const done = S.items.filter(i => i.result && same(i.settings, i.result.settings)).length;
+  $("#stripNote").textContent = S.items.length > 1 ? `${done} / ${S.items.length} 张完成` : "";
+}
+function select(it) {
+  if (S.cur === it) return;
+  if (S.painting) endStroke();
+  const prev = S.cur;
+  S.cur = it;
+  if (!prev || same(S.draft, prev.settings)) S.draft = { ...it.settings };  // unapplied edits stay for the next image
+  lOrig.src = it.src;
+  composite(); fit(); syncPanel(); renderStrip();
+}
+function step(d) {
+  if (!S.cur || S.items.length < 2) return;
+  select(S.items[(S.items.indexOf(S.cur) + d + S.items.length) % S.items.length]);
+}
+
+/* ---------------- view ---------------- */
+function fit() {
+  const it = S.cur;
+  if (!it) return render();
+  const W = stage.clientWidth, H = stage.clientHeight, pad = 26, s = Math.min((W - pad * 2) / it.w, (H - pad * 2) / it.h);
+  S.vp = { s, x: (W - it.w * s) / 2, y: (H - it.h * s) / 2 };
+  render();
+}
+function zoomAt(f, cx, cy, abs) {
+  if (!S.vp) return;
+  cx ??= stage.clientWidth / 2; cy ??= stage.clientHeight / 2;
+  const s = Math.min(24, Math.max(0.03, abs ? f : S.vp.s * f));
+  S.vp.x = cx - (cx - S.vp.x) * s / S.vp.s; S.vp.y = cy - (cy - S.vp.y) * s / S.vp.s; S.vp.s = s;
+  render(); moveCursor();
+}
+function render() {
+  const it = S.cur, has = !!(it && S.vp), hasOut = !!(it && it.result);
+  $("#empty").hidden = !!it;
+  stage.classList.toggle("has", has);
+  stage.classList.toggle("paint", has && S.brush.on && !S.space);
+  for (const id of ["#frame", "#tagL", "#tagR", "#divider"]) $(id).hidden = !has;
+  for (const el of [lOrig, lRes, tint]) el.style.display = has ? "" : "none";
+  $("#zPct").textContent = has ? Math.round(S.vp.s * 100) + "%" : "—";
+  for (const b of $$("#views button")) { b.classList.toggle("on", b.dataset.v === S.view); b.disabled = !hasOut && b.dataset.v !== "before"; }
+  if (!has) { $("#viewHint").textContent = ""; return; }
+  const { s, x, y } = S.vp, W = stage.clientWidth;
+  const t = `translate(${x}px, ${y}px) scale(${s})`;
+  for (const el of [lOrig, lRes, tint]) { el.style.width = it.w + "px"; el.style.height = it.h + "px"; el.style.transform = t; }
+  stage.classList.toggle("px", s >= 2);
+  Object.assign($("#frame").style, { left: x + "px", top: y + "px", width: it.w * s + "px", height: it.h * s + "px" });
+  const v = S.peek || !hasOut ? "before" : S.view;
+  lOrig.style.visibility = v === "after" ? "hidden" : "visible";
+  lRes.style.visibility = v === "before" ? "hidden" : "visible";
+  lRes.style.clipPath = v === "cmp" ? `inset(0 0 0 ${Math.max(0, (S.split * W - x) / s)}px)` : "none";
+  $("#divider").hidden = v !== "cmp"; $("#divider").style.left = S.split * 100 + "%";
+  $("#tagL").hidden = v === "after"; $("#tagR").hidden = v === "before";
+  $("#tagL").textContent = hasOut ? "原图" : it.status === "running" ? "原图 · 处理中" : "原图 · 排队中";
+  $("#tagR").textContent = it.hasMask ? "结果 · 含保护" : "结果";
+  tint.classList.toggle("show", !!it.hasMask && (S.brush.show || S.brush.peekMask || (S.brush.on && S.brush.painting)));
+  $("#viewHint").textContent = !hasOut ? "还没处理完，先显示原图" : v === "cmp" ? "拖动中间的分割线对比 · 按住 Z 看原图" : v === "before" ? "原图" : "结果 · 就是保存的那张";
+}
+$$("#views button").forEach(b => b.onclick = () => { S.view = b.dataset.v; render(); });
+$("#zFit").onclick = fit; $("#z11").onclick = () => zoomAt(1, null, null, true);
+$("#zIn").onclick = () => zoomAt(1.25); $("#zOut").onclick = () => zoomAt(0.8);
+new ResizeObserver(() => S.cur && fit()).observe(stage);
+stage.addEventListener("wheel", e => { if (!S.vp) return; e.preventDefault(); const r = stage.getBoundingClientRect(); zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+stage.addEventListener("dblclick", e => { if (!S.brush.on && !e.target.closest(".brushbar")) fit(); });
+$("#knob").addEventListener("keydown", e => {
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); e.stopPropagation(); S.split = Math.min(1, Math.max(0, S.split + (e.key === "ArrowLeft" ? -0.02 : 0.02))); render(); }
+});
+
+/* ---------------- protection brush ---------------- */
+function setBrush(on, tool) {
+  if (on && !S.cur) return;
+  if (S.painting) endStroke();
+  S.brush.on = on;
+  if (tool) S.brush.tool = tool;
+  $("#brushbar").hidden = !on;
+  for (const b of $$("#brushbar [data-t]")) b.classList.toggle("on", b.dataset.t === S.brush.tool);
+  $("#cursor").hidden = true;
+  syncPanel(); render();
+}
+function syncBrushBar() {
+  const b = S.brush;
+  $("#bSize").value = b.size; $("#bSizeV").textContent = b.size + " px";
+  $("#bMix").value = b.mix; $("#bMixV").textContent = b.mix + "%";
+  $("#bSoft").value = b.soft; $("#bSoftV").textContent = b.soft + " px";
+  for (const id of ["#bSize", "#bMix", "#bSoft"]) paintRange($(id));
+  $("#bShow").classList.toggle("on", b.show);
+}
+syncBrushBar();
+$("#brushBtn").onclick = () => setBrush(!S.brush.on);
+$("#bDone").onclick = () => setBrush(false);
+$$("#brushbar [data-t]").forEach(b => b.onclick = () => setBrush(true, b.dataset.t));
+$("#bSize").oninput = e => { S.brush.size = +e.target.value; syncBrushBar(); moveCursor(); };
+$("#bMix").oninput = e => { S.brush.mix = +e.target.value; syncBrushBar(); syncPanel(); };
+$("#bSoft").oninput = e => { S.brush.soft = +e.target.value; syncBrushBar(); syncPanel(); if (S.cur?.hasMask) { scheduleComposite(); scheduleSave(S.cur); } };
+$("#bShow").onclick = () => { S.brush.show = !S.brush.show; syncBrushBar(); render(); };
+function snapshot(it) { return { data: ctx(it.paint, true).getImageData(0, 0, it.w, it.h), has: it.hasMask }; }
+function pushUndo(it) { it.undo.push(snapshot(it)); if (it.undo.length > 20) it.undo.shift(); it.redo = []; }
+function restore(it, from, to) {
+  if (!from.length) return;
+  to.push(snapshot(it));
+  const s = from.pop();
+  ctx(it.paint, true).putImageData(s.data, 0, 0); it.hasMask = s.has;
+  composite(); scheduleSave(it); syncPanel(); renderStrip();
+}
+const undo = () => S.cur && restore(S.cur, S.cur.undo, S.cur.redo);
+const redo = () => S.cur && restore(S.cur, S.cur.redo, S.cur.undo);
+$("#bUndo").onclick = undo; $("#bRedo").onclick = redo;
+function clearMask() {
+  const it = S.cur;
+  if (!it || !it.hasMask) return;
+  pushUndo(it);
+  const g = ctx(it.paint, true); g.fillStyle = "#000"; g.fillRect(0, 0, it.w, it.h);
+  it.hasMask = false;
+  composite(); scheduleSave(it); syncPanel(); renderStrip();
+  toast("已清除保护区（Ctrl+Z 可撤销）");
+}
+$("#bClear").onclick = $("#clearMask").onclick = clearMask;
+function anyPaint(it) {
+  const d = ctx(it.paint, true).getImageData(0, 0, it.w, it.h).data;
+  for (let i = 0; i < d.length; i += 4) if (d[i]) return true;
+  return false;
+}
+let last = null, stroke = "brush", drag = null, cursorAt = null;
+const toImg = (e, r) => [(e.clientX - r.left - S.vp.x) / S.vp.s, (e.clientY - r.top - S.vp.y) / S.vp.s];
+function paintTo(p) {
+  const it = S.cur, g = ctx(it.paint, true), v = stroke === "erase" ? 0 : Math.round(S.brush.mix / 100 * 255);
+  g.strokeStyle = g.fillStyle = `rgb(${v},${v},${v})`;
+  g.lineWidth = S.brush.size; g.lineCap = g.lineJoin = "round";
+  g.beginPath();
+  if (last) { g.moveTo(last[0], last[1]); g.lineTo(p[0], p[1]); g.stroke(); }
+  else { g.arc(p[0], p[1], S.brush.size / 2, 0, Math.PI * 2); g.fill(); }
+  last = p;
+  if (stroke === "brush") it.hasMask = true;
+  scheduleComposite();
+}
+function endStroke() {
+  if (!S.painting) return;
+  S.painting = false; S.brush.painting = false; last = null;
+  const it = S.cur;
+  if (it) { if (stroke === "erase") it.hasMask = anyPaint(it); composite(); scheduleSave(it); syncPanel(); renderStrip(); }
+}
+function moveCursor() {
+  const c = $("#cursor");
+  if (!S.brush.on || !cursorAt || !S.vp || S.space) { c.hidden = true; return; }
+  const d = S.brush.size * S.vp.s;
+  Object.assign(c.style, { left: cursorAt[0] + "px", top: cursorAt[1] + "px", width: d + "px", height: d + "px" });
+  c.classList.toggle("erase", S.brush.tool === "erase");
+  c.hidden = false;
+}
+stage.addEventListener("contextmenu", e => e.preventDefault());
+stage.addEventListener("pointerdown", e => {
+  if (!S.vp || e.target.closest(".brushbar")) return;
+  const r = stage.getBoundingClientRect();
+  if (e.target.closest("#divider") && !S.brush.on) { drag = { kind: "split" }; stage.setPointerCapture(e.pointerId); return; }
+  if (S.brush.on && !S.space && (e.button === 0 || e.button === 2) && S.cur.result) {
+    stroke = e.button === 2 ? "erase" : S.brush.tool;
+    pushUndo(S.cur);
+    S.painting = true; S.brush.painting = true; last = null;
+    stage.setPointerCapture(e.pointerId);
+    paintTo(toImg(e, r)); render();
+    return;
+  }
+  drag = { kind: "pan", x: e.clientX, y: e.clientY };
+  stage.setPointerCapture(e.pointerId); stage.classList.add("pan");
+});
+stage.addEventListener("pointermove", e => {
+  const r = stage.getBoundingClientRect();
+  cursorAt = [e.clientX - r.left, e.clientY - r.top];
+  moveCursor();
+  if (S.painting) { paintTo(toImg(e, r)); return; }
+  if (!drag) return;
+  if (drag.kind === "split") { S.split = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); render(); return; }
+  S.vp.x += e.clientX - drag.x; S.vp.y += e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY; render();
+});
+const pointerEnd = () => { if (S.painting) endStroke(); drag = null; stage.classList.remove("pan"); };
+stage.addEventListener("pointerup", pointerEnd); stage.addEventListener("pointercancel", pointerEnd);
+stage.addEventListener("pointerleave", () => { cursorAt = null; moveCursor(); });
+
+/* ---------------- keyboard ---------------- */
+addEventListener("keydown", e => {
+  if ($("#helpDlg").open || $("#quitDlg").open) return;
+  const k = e.key.toLowerCase(), el = e.target, typing = (el.tagName === "INPUT" && el.type !== "range" && el.type !== "checkbox") || el.tagName === "TEXTAREA";
+  if (e.ctrlKey || e.metaKey) {
+    if (k === "o") { e.preventDefault(); pick(); }
+    else if (k === "s") { e.preventDefault(); download(); }
+    else if (k === "z" && !typing) { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+    else if (k === "y" && !typing) { e.preventDefault(); redo(); }
+    return;
+  }
+  if (typing || e.altKey) return;
+  if (e.key === " ") { e.preventDefault(); if (!S.space) { S.space = true; render(); moveCursor(); } return; }
+  if (e.key === "?") return $("#helpDlg").showModal();
+  if (!S.cur) return;
+  const onRange = el.type === "range";
+  const act = {
+    "1": () => { S.view = "cmp"; render(); }, "2": () => { S.view = "before"; render(); }, "3": () => { S.view = "after"; render(); },
+    x: () => { if (!e.repeat && S.cur.result) { S.view = S.view === "after" ? "before" : "after"; render(); } },
+    z: () => { if (!e.repeat) { S.peek = true; render(); } },
+    m: () => { if (!e.repeat) { S.brush.peekMask = true; render(); } },
+    b: () => { if (!e.repeat) setBrush(!S.brush.on || S.brush.tool === "erase", "brush"); },
+    e: () => setBrush(true, "erase"),
+    escape: () => setBrush(false),
+    "[": () => { S.brush.size = Math.max(2, Math.round(S.brush.size / 1.2)); syncBrushBar(); moveCursor(); },
+    "]": () => { S.brush.size = Math.min(300, Math.round(S.brush.size * 1.2) + 1); syncBrushBar(); moveCursor(); },
+    f: fit, "0": () => zoomAt(1, null, null, true),
+    arrowleft: () => !onRange && step(-1), arrowright: () => !onRange && step(1),
+  }[k];
+  if (act) { if (!(onRange && k.startsWith("arrow"))) e.preventDefault(); act(); }
+});
+addEventListener("keyup", e => {
+  const k = e.key.toLowerCase();
+  if (e.key === " ") { S.space = false; render(); moveCursor(); }
+  if (k === "z" && S.peek) { S.peek = false; render(); }
+  if (k === "m" && S.brush.peekMask) { S.brush.peekMask = false; render(); }
+});
+addEventListener("blur", () => { S.space = S.peek = S.brush.peekMask = false; render(); });
+
+syncPanel(); renderStrip(); render();
+</script>
+</body>
+</html>
