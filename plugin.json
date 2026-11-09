@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "keepcolor-denoise",
+  "version": "0.1.0",
+  "description": "原尺寸图片去噪，清理压缩伪影、振铃和摩尔纹。需要本地 Python 运行环境。",
+  "author": {
+    "name": "juanhanyu"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/juanhanyu/keepcolor-denoise"
+}

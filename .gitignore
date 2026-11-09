@@ -5,3 +5,9 @@ output/
 config.json
 __pycache__/
 *.part
+
+# Private signing material
+*.jks
+*.keystore
+*.p12
+*.mobileprovision

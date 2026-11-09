@@ -1,5 +1,23 @@
 <p align="center"><img src="docs/icon.png" width="96" alt="Denoise"></p>
 
+## 版本 / Versions
+
+本项目同时维护以下版本，原有 Windows 电脑版的启动方式和功能保持不变。
+
+| 版本 | 位置 | 当前状态 |
+| --- | --- | --- |
+| Windows 电脑版 | 根目录 `Denoise.exe`、`denoise.py`、`server.py`、`web/` | 原有版本；保留 DRUNet、APISR、L0、保护笔刷和批处理 |
+| Android / iPhone 离线版 | [`mobile/`](mobile/) | 开发版原生工程与离线推理代码；尚无已验证的 APK / IPA，不含 APISR |
+| Skill | [`skills/keepcolor-denoise/`](skills/keepcolor-denoise/) | 本地 Python 图片处理技能；DRUNet 与可选 L0，不含 APISR |
+| 插件包定义 | [`plugin.json`](plugin.json) | 纯 Skill 插件配置；尚未提交公开目录审核 |
+
+手机端的模型转换、数值对照和前端构建已通过；原生编译、签名和真机测试尚未完成。手机端暂未移植 L0、保护笔刷、批处理及原始 ICC 保留。构建步骤与限制见 [移动版说明](mobile/README.md)。
+
+Skill 需要可执行 Python 的宿主环境，不代表在任意手机聊天界面中都能直接运行。安装和插件打包见 [技能说明](docs/skills.md)。
+
+---
+
+
 <h1 align="center">Denoise</h1>
 
 <p align="center">在保持原图色彩的前提下，去掉压缩伪影、振铃、摩尔纹和鱼鳞纹。<br>

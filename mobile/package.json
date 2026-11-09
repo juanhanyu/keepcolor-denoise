@@ -1,0 +1,23 @@
+{
+  "name": "keepcolor-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node tools/assets.mjs && vite build",
+    "dev": "vite",
+    "test": "node --test src/*.test.mjs"
+  },
+  "dependencies": {
+    "@capacitor/core": "8.6.0",
+    "@capacitor/android": "8.6.0",
+    "@capacitor/ios": "8.6.0",
+    "@capacitor/filesystem": "8.1.5",
+    "@capacitor/share": "8.0.3",
+    "onnxruntime-web": "1.31.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.0",
+    "vite": "8.3.7"
+  }
+}

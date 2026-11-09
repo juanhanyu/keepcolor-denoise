@@ -1,0 +1,13 @@
+import {Capacitor} from '@capacitor/core';
+import {Filesystem,Directory} from '@capacitor/filesystem';
+import {Share} from '@capacitor/share';
+import './style.css';
+const $=id=>document.getElementById(id), canvas=$('preview'), ctx=canvas.getContext('2d');
+let original,result,name='image',worker;
+const status=s=>$('status').textContent=s;
+$('sigma').oninput=()=>{$('strength').value=$('sigma').value};
+$('file').onchange=async()=>{try{const f=$('file').files[0];if(!f)return;const bitmap=await createImageBitmap(f);if(bitmap.width*bitmap.height>4000000){bitmap.close();throw Error('当前版本支持不超过 400 万像素的图片，请先裁剪。')}canvas.width=bitmap.width;canvas.height=bitmap.height;ctx.drawImage(bitmap,0,0);bitmap.close();original=ctx.getImageData(0,0,canvas.width,canvas.height);result=null;name=f.name.replace(/\.[^.]+$/,'');$('run').disabled=false;$('save').disabled=$('compare').disabled=true;status('就绪')}catch(e){status(e.message)}};
+$('run').onclick=()=>{worker?.terminate();worker=new Worker(new URL('./worker.js',import.meta.url),{type:'module'});$('run').disabled=$('file').disabled=$('save').disabled=$('compare').disabled=true;const done=()=>{$('run').disabled=$('file').disabled=false;worker.terminate()};worker.onerror=e=>{status(e.message);done()};worker.onmessage=({data})=>{if(data.status)status(data.status);if(data.error){status(data.error);done()}if(data.rgba){result=new ImageData(data.rgba,canvas.width,canvas.height);ctx.putImageData(result,0,0);$('save').disabled=$('compare').disabled=false;status('处理完成');done()}};worker.postMessage({rgba:original.data.slice(),w:canvas.width,h:canvas.height,sigma:Number($('sigma').value)})};
+$('compare').onpointerdown=e=>{e.target.setPointerCapture(e.pointerId);ctx.putImageData(original,0,0)};
+for(const event of ['pointerup','pointercancel','lostpointercapture'])$('compare').addEventListener(event,()=>{if(result)ctx.putImageData(result,0,0)});
+$('save').onclick=async()=>{try{ctx.putImageData(result,0,0);const data=canvas.toDataURL('image/png');if(Capacitor.isNativePlatform()){const file=await Filesystem.writeFile({path:name+'_clean.png',data:data.split(',')[1],directory:Directory.Cache});await Share.share({url:file.uri,title:'KeepColor'})}else{const a=document.createElement('a');a.href=data;a.download=name+'_clean.png';a.click()}}catch(e){status(e.message)}};
