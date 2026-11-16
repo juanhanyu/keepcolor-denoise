@@ -71,8 +71,8 @@ Denoise 在**原尺寸**上去噪，不缩小、不重画：线条的位置、�
   - **APISR 锐化**（默认关）：会改变原有色彩，页面上有提示；
   - **DRUNet 去噪**（默认开）：原尺寸去伪影、振铃、摩尔纹、鱼鳞纹，不改颜色；
   - **L0 平滑**（默认关）：把色块里残留的细碎起伏压平，很淡的渐变也会被抹平一些。
-  - 点 **更多设置** 展开：APISR 档位（2× RRDB 默认 / 4× RRDB / 4× GRL / 4× DAT，用到才下载）、APISR 强度、DRUNet 强度、L0 强度、白噪点大小和亮度差。
-- **默认只开 DRUNet，并对所有图片生效**。改了设置后点 **对该图生效**（只改当前这张）或 **对所有图生效**（全部，之后放进来的图也用它）才会应用。
+  - 点 **更多设置** 展开：APISR 档位（2× RRDB 默认 / 4× RRDB / 4× GRL / 4× DAT，用到才下载）、APISR 强度、DRUNet 强度、L0 强度，以及白噪点的大小（默认 2 px）、亮度差（默认 10%）和去除比例（默认 100%，调低就随机少去一些，按整个白点取舍）。
+- **默认只开 DRUNet，并对所有图片生效**。改了设置后点 **对该图生效**（只改当前这张）或 **对所有图生效**（全部，之后放进来的图也用它）才会应用；把下面的 **自动应用** 切到「该图」或「所有图」，改了设置就直接应用，不用再点。
 - **保护笔刷**：不想被处理的地方涂上，就按比例换回原图，马上生效；可调大小、恢复比例、柔边，支持橡皮、撤销 / 重做。笔刷的 **「改动」模式**（`D`，涂抹修改部分）只把笔刷扫过处被处理改动过的像素（差别超过「改动阈值」）放进保护区，没被改动的像素不涂；**自动涂改动部分**（`A`）则是整张图一次涂上，不该保护的再用橡皮擦掉。
 - **对比**：左右分割线、原图 / 结果切换、按住 `Z` 看原图、滚轮缩放、拖动平移。
 - **浅色 / 深色**：跟随系统，或在右上角切换。
@@ -84,7 +84,7 @@ Denoise 在**原尺寸**上去噪，不缩小、不重画：线条的位置、�
 runtime\venv\Scripts\python denoise.py photo.png                 # 默认：只开 DRUNet，结果在 output\
 runtime\venv\Scripts\python denoise.py a.png b.jpg --apisr --l0   # APISR → DRUNet → L0
 runtime\venv\Scripts\python denoise.py folder --out clean --sigma 14
-runtime\venv\Scripts\python denoise.py photo.png --despeckle      # 先去白噪点，再 DRUNet（--speck-size / --speck-thr 可调）
+runtime\venv\Scripts\python denoise.py photo.png --despeckle      # 先去白噪点，再 DRUNet（--speck-size / --speck-thr / --speck-ratio 可调）
 runtime\venv\Scripts\python denoise.py --help
 ```
 

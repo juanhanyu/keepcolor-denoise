@@ -65,8 +65,9 @@ APISR = {
 @dataclass(frozen=True)
 class Settings:
     speck: bool = False          # remove small bright white specks first
-    speck_size: int = 3          # largest speck, in pixels across
+    speck_size: int = 2          # largest speck, in pixels across
     speck_thr: float = 0.10      # how much brighter than its surroundings a speck must be (0..1)
+    speck_ratio: float = 1.0     # share of the specks that is removed, picked at random (1 = all of them)
     apisr: bool = False          # sharpen with APISR first (changes colours a little)
     apisr_model: str = "2x_rrdb"
     apisr_amount: float = 1.0    # 0..1: how much of the APISR result is blended over the input
@@ -81,7 +82,8 @@ class Settings:
                        apisr_amount=min(max(float(self.apisr_amount), 0.0), 1.0),
                        sigma=min(max(float(self.sigma), 1.0), 50.0), lam=min(max(float(self.lam), 1e-5), 0.05),
                        speck_size=min(max(int(self.speck_size), 1), 15),
-                       speck_thr=min(max(float(self.speck_thr), 0.02), 0.5))
+                       speck_thr=min(max(float(self.speck_thr), 0.02), 0.5),
+                       speck_ratio=min(max(float(self.speck_ratio), 0.0), 1.0))
 
 
 class Cancelled(Exception):
@@ -244,15 +246,32 @@ def _open_line(x, k, dy, dx):
     return shifts(shifts(x, -a, b).min(0).values, -b, a).max(0).values
 
 
+def _pick_specks(mask, share, steps):
+    """A random `share` of the specks in a 0/1 mask (1x1xHxW), whole specks at a time.
+
+    Every pixel gets a random number (fixed seed, so the same picture always loses the same specks), each speck takes
+    the largest one inside it, and a hash of that decides: uniform whatever the speck's size, and a lower share always
+    picks a subset of what a higher share picks.
+    """
+    g = torch.Generator().manual_seed(0)
+    key = torch.randint(1, 1 << 24, mask.shape, generator=g, dtype=torch.int32).to(mask.device).float() * mask
+    for _ in range(steps):
+        key = F.max_pool2d(key, 3, 1, 1) * mask
+    h = key.long() * 2654435761 % (1 << 32)  # an integer hash in three mixing rounds
+    h = (h ^ (h >> 15)) * 2246822519 % (1 << 32)
+    h = (h ^ (h >> 13)) * 3266489917 % (1 << 32)
+    return mask * ((h ^ (h >> 16)) < int(share * (1 << 32)))
+
+
 @torch.no_grad()
-def despeckle(x, size=3, thr=0.10, stop=None, report=None):
+def despeckle(x, size=2, thr=0.10, ratio=1.0, stop=None, report=None):
     """Remove bright white specks up to `size` pixels across from a 1x3xHxW image.
 
     A speck is short in every direction, a thin highlight line or an edge is long in at least one. So the picture
     (its darkest channel: white specks are bright in all three) is opened with lines in four directions and the
     largest result is what the picture looks like without specks; pixels brighter than that by more than thr are the
     specks. They (and a one-pixel rim) are filled with a blur of the untouched pixels around them; no other pixel
-    changes.
+    changes. ratio below 1 removes only that share of the specks, picked at random.
     """
     if report:
         report("去白噪点")
@@ -264,6 +283,8 @@ def despeckle(x, size=3, thr=0.10, stop=None, report=None):
         o = _open_line(low, k, dy, dx)
         opened = o if i == 0 else torch.maximum(opened, o)
     mask = F.max_pool2d(((low - opened) > thr).float(), 3, 1, 1)
+    if ratio < 1:
+        mask = _pick_specks(mask, ratio, 2 * size + 4)
     if not mask.any():
         return x
     keep = 1 - mask
@@ -376,8 +397,8 @@ def process(rgb, st, device, cache=None, stop=None, report=None):
     x = to_tensor(rgb, device)
     key = (tag,)
     if st.speck:
-        key += ("speck", st.speck_size, round(st.speck_thr, 3))
-        x = cache.get(key, lambda: despeckle(x, st.speck_size, st.speck_thr, stop, report), device)
+        key += ("speck", st.speck_size, round(st.speck_thr, 3), round(st.speck_ratio, 3))
+        x = cache.get(key, lambda: despeckle(x, st.speck_size, st.speck_thr, st.speck_ratio, stop, report), device)
     if st.apisr and st.apisr_amount > 0:
         sharp = cache.get(key + ("apisr", st.apisr_model), lambda: apisr(x, st.apisr_model, device, stop, report), device)
         x = x + st.apisr_amount * (sharp - x)
@@ -402,7 +423,9 @@ def main():
     ap.add_argument("inputs", nargs="*", help="images or folders")
     ap.add_argument("--out", default=str(OUTPUT_DIR), help="output folder (default: ./output)")
     ap.add_argument("--despeckle", action="store_true", help="remove small bright white specks first")
-    ap.add_argument("--speck-size", type=int, default=3, help="largest speck in pixels across (default 3)")
+    ap.add_argument("--speck-size", type=int, default=2, help="largest speck in pixels across (default 2)")
+    ap.add_argument("--speck-ratio", type=float, default=1.0,
+                    help="share of the specks to remove, picked at random, 0-1 (default 1 = all)")
     ap.add_argument("--speck-thr", type=float, default=0.10,
                     help="how much brighter than its surroundings a speck is, 0-1 (default 0.10; lower removes more)")
     ap.add_argument("--apisr", action="store_true", help="sharpen with APISR first (changes colours a little)")
@@ -423,7 +446,7 @@ def main():
         return
     if not a.inputs:
         ap.error("give at least one image or folder")
-    st = Settings(speck=a.despeckle, speck_size=a.speck_size, speck_thr=a.speck_thr, apisr=a.apisr, apisr_model=a.apisr_model, apisr_amount=a.apisr_amount, drunet=not a.no_drunet,
+    st = Settings(speck=a.despeckle, speck_size=a.speck_size, speck_thr=a.speck_thr, speck_ratio=a.speck_ratio, apisr=a.apisr, apisr_model=a.apisr_model, apisr_amount=a.apisr_amount, drunet=not a.no_drunet,
                   sigma=a.sigma, l0=a.l0, lam=a.lam)
     device = a.device or default_device()
     files = []

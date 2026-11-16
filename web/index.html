@@ -119,6 +119,7 @@
   input[type=range]::-moz-range-progress { height: 4px; background: var(--accent); }
   input[type=range]:disabled { opacity: .4; }
   .pending { margin-top: 12px; padding: 8px 10px; border-radius: 9px; background: var(--warn-soft); color: var(--warn); font-size: 12.5px; }
+  .auto { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; font-size: 12.5px; color: var(--text-2); }
   .apply { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
   .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 38px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--panel); font-weight: 600; font-size: 13px; transition: background .12s; }
   .btn:hover:not(:disabled) { background: var(--panel-2); }
@@ -296,6 +297,11 @@
             <div class="ends"><span>去得更多</span><span>只去最亮的</span></div>
           </div>
           <div class="field">
+            <div class="top"><span>白噪点去除比例</span><output class="num" id="vSpeckRatio"></output></div>
+            <input type="range" id="sSpeckRatio" min="0" max="100" step="5">
+            <div class="ends"><span>随机少去一些</span><span>全部去掉</span></div>
+          </div>
+          <div class="field">
             <div class="top"><span>APISR 档位</span><output id="lvlNote"></output></div>
             <div class="levels" id="levels"></div>
             <div class="hint" style="margin-top:6px">没用过的档位第一次会自动下载；4× 档位每张会慢很多。</div>
@@ -321,6 +327,10 @@
         <div class="apply">
           <button class="btn" id="applyOne" title="只用到当前这张图">对该图生效</button>
           <button class="btn primary" id="applyAll" title="用到所有图片，之后加入的图也用它">对所有图生效</button>
+        </div>
+        <div class="auto" title="打开后改了设置就自动应用，不用再点上面的按钮">
+          <span>自动应用</span>
+          <div class="seg" id="autoSeg"><button data-a="off">关</button><button data-a="one">该图</button><button data-a="all">所有图</button></div>
         </div>
       </section>
 
@@ -449,15 +459,15 @@ const jobId = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.rando
 
 /* ---------------- settings ---------------- */
 const LEVELS = [["2x_rrdb", "2× RRDB", "18 MB · 默认"], ["4x_rrdb", "4× RRDB", "18 MB"], ["4x_grl", "4× GRL", "6.5 MB · 慢"], ["4x_dat", "4× DAT", "87 MB · 最慢"]];
-const DEFAULTS = { apisr: false, apisr_model: "2x_rrdb", apisr_amount: 100, drunet: true, sigma: 10, l0: false, lam: 0.001, speck: false, speck_size: 3, speck_thr: 10 };
+const DEFAULTS = { apisr: false, apisr_model: "2x_rrdb", apisr_amount: 100, drunet: true, sigma: 10, l0: false, lam: 0.001, speck: false, speck_size: 2, speck_thr: 10, speck_ratio: 100 };
 const norm = s => ({ ...DEFAULTS, ...(s || {}), apisr_model: LEVELS.some(l => l[0] === s?.apisr_model) ? s.apisr_model : "2x_rrdb" });
 // what changes the result: amount and level matter only with APISR on, the L0 strength only with L0 on
-const skey = s => { s = norm(s); return [s.speck ? `k${s.speck_size}:${s.speck_thr}` : "", s.apisr ? `a${s.apisr_model}:${s.apisr_amount}` : "", s.drunet ? `d${s.sigma}` : "", s.l0 ? `l${(+s.lam).toFixed(4)}` : ""].join("|"); };
+const skey = s => { s = norm(s); return [s.speck ? `k${s.speck_size}:${s.speck_thr}:${s.speck_ratio}` : "", s.apisr ? `a${s.apisr_model}:${s.apisr_amount}` : "", s.drunet ? `d${s.sigma}` : "", s.l0 ? `l${(+s.lam).toFixed(4)}` : ""].join("|"); };
 const same = (a, b) => !!(a && b) && skey(a) === skey(b);
 function describe(s) {
   s = norm(s);
   const parts = [];
-  if (s.speck) parts.push(`去白点 ${s.speck_size}px`);
+  if (s.speck) parts.push(`去白点 ${s.speck_size}px${s.speck_ratio < 100 ? " " + s.speck_ratio + "%" : ""}`);
   if (s.apisr) parts.push(`APISR ${LEVELS.find(l => l[0] === s.apisr_model)[1]}${s.apisr_amount < 100 ? " " + s.apisr_amount + "%" : ""}`);
   if (s.drunet) parts.push(`DRUNet${s.sigma !== 10 ? " " + s.sigma : ""}`);
   if (s.l0) parts.push(`L0 ${fmtLam(s.lam)}`);
@@ -466,7 +476,7 @@ function describe(s) {
 
 const S = {
   items: [], cur: null, queue: [], running: null, info: {},
-  defaults: norm(load("defaults", DEFAULTS)), draft: null,
+  defaults: norm(load("defaults", DEFAULTS)), draft: null, auto: ["one", "all"].includes(load("auto", "off")) ? load("auto", "off") : "off",
   view: "cmp", split: 0.5, vp: null, peek: false, space: false,
   brush: { on: false, tool: "brush", size: 24, mix: 90, soft: 12, show: false, painting: false, peekMask: false, diff: load("diff", 8) },
 };
@@ -642,7 +652,7 @@ async function runItem(it) {
   try {
     const q = new URLSearchParams({ id: it.sid, job: it.job, apisr: s.apisr ? 1 : 0, apisr_model: s.apisr_model, apisr_amount: s.apisr_amount,
       drunet: s.drunet ? 1 : 0, sigma: s.sigma, l0: s.l0 ? 1 : 0, lam: s.lam,
-      speck: s.speck ? 1 : 0, speck_size: s.speck_size, speck_thr: s.speck_thr });
+      speck: s.speck ? 1 : 0, speck_size: s.speck_size, speck_thr: s.speck_thr, speck_ratio: s.speck_ratio });
     const j = await api("/api/process?" + q, { method: "POST", signal: it.ctrl.signal });
     if (it.removed) return;
     it.result = { rid: j.rid, url: `/api/file/${j.rid}.png`, img: null, settings: s, elapsed: j.elapsed };  // drawn when shown
@@ -675,7 +685,7 @@ function renderLevels() {
   $("#lvlNote").textContent = lvl ? lvl[1] : "";
 }
 function paintRange(el) { el.style.setProperty("--p", ((el.value - el.min) / (el.max - el.min) * 100) + "%"); }
-function editDraft(patch) { S.draft = norm({ ...S.draft, ...patch }); syncSettings(); }
+function editDraft(patch) { S.draft = norm({ ...S.draft, ...patch }); syncSettings(); scheduleAuto(); }
 function baseline() { return S.cur ? S.cur.settings : S.defaults; }
 function syncSettings() {
   const d = S.draft;
@@ -687,10 +697,11 @@ function syncSettings() {
   $("#sSpeck").checked = d.speck; $("#rowSpeck").classList.toggle("on", d.speck);
   $("#sSpeckSize").value = d.speck_size; $("#vSpeckSize").textContent = d.speck_size + " px"; $("#sSpeckSize").disabled = !d.speck;
   $("#sSpeckThr").value = d.speck_thr; $("#vSpeckThr").textContent = d.speck_thr + "%"; $("#sSpeckThr").disabled = !d.speck;
-  for (const id of ["#sAmount", "#sSigma", "#sLam", "#sSpeckSize", "#sSpeckThr"]) paintRange($(id));
+  $("#sSpeckRatio").value = d.speck_ratio; $("#vSpeckRatio").textContent = d.speck_ratio + "%"; $("#sSpeckRatio").disabled = !d.speck;
+  for (const id of ["#sAmount", "#sSigma", "#sLam", "#sSpeckSize", "#sSpeckThr", "#sSpeckRatio"]) paintRange($(id));
   renderLevels();
   const dirty = !same(d, baseline());
-  $("#pending").hidden = !dirty;
+  $("#pending").hidden = !dirty || S.auto !== "off";
   const everyone = S.items.length > 0 && S.items.every(it => same(it.settings, S.defaults));
   $("#scopePill").textContent = !S.cur ? "新图都用这个" : everyone && same(S.cur.settings, S.defaults) ? "所有图一样" : "这张单独设置";
   $("#scopePill").className = "pill" + (S.cur && !(everyone && same(S.cur.settings, S.defaults)) ? " on" : "");
@@ -701,24 +712,44 @@ $("#sDrunet").onchange = e => editDraft({ drunet: e.target.checked });
 $("#sL0").onchange = e => editDraft({ l0: e.target.checked });
 $("#sSpeck").onchange = e => editDraft({ speck: e.target.checked });
 for (const [id, key, out] of [["#sAmount", "apisr_amount", v => v + "%"], ["#sSigma", "sigma", v => v], ["#sLam", "lam", fmtLam],
-  ["#sSpeckSize", "speck_size", v => v + " px"], ["#sSpeckThr", "speck_thr", v => v + "%"]]) {
+  ["#sSpeckSize", "speck_size", v => v + " px"], ["#sSpeckThr", "speck_thr", v => v + "%"], ["#sSpeckRatio", "speck_ratio", v => v + "%"]]) {
   $(id).addEventListener("input", e => { const v = +e.target.value; $(id.replace("#s", "#v")).textContent = out(v); paintRange(e.target); });
   $(id).addEventListener("change", e => editDraft({ [key]: +(+e.target.value).toFixed(key === "lam" ? 4 : 0) }));
 }
 $("#moreBtn").onclick = () => { const open = $("#adv").hidden; $("#adv").hidden = !open; $("#moreBtn").setAttribute("aria-expanded", open); save("adv", open); };
 if (load("adv", false)) { $("#adv").hidden = false; $("#moreBtn").setAttribute("aria-expanded", "true"); }
-$("#resetBtn").onclick = () => { S.draft = { ...DEFAULTS }; syncSettings(); };
-$("#applyOne").onclick = () => {
+$("#resetBtn").onclick = () => { S.draft = { ...DEFAULTS }; syncSettings(); scheduleAuto(); };
+function applyOne(quiet) {
   if (!S.cur) return;
   S.cur.settings = { ...S.draft };
   enqueue(S.cur);
-  syncSettings(); toast(`这张图：${describe(S.draft)}`);
-};
-$("#applyAll").onclick = () => {
+  syncSettings();
+  if (!quiet) toast(`这张图：${describe(S.draft)}`);
+}
+function applyAll(quiet) {
   S.defaults = { ...S.draft }; save("defaults", S.defaults);
   for (const it of S.items) { it.settings = { ...S.draft }; enqueue(it); }
-  syncSettings(); toast(`所有图片${S.items.length ? `（${S.items.length} 张）` : ""}和之后加入的图：${describe(S.draft)}`);
+  syncSettings();
+  if (!quiet) toast(`所有图片${S.items.length ? `（${S.items.length} 张）` : ""}和之后加入的图：${describe(S.draft)}`);
+}
+$("#applyOne").onclick = () => applyOne();
+$("#applyAll").onclick = () => applyAll();
+// auto-apply: a changed setting is applied by itself, to this picture or to all of them, a moment after the last change
+let autoTimer = 0;
+function scheduleAuto() {
+  clearTimeout(autoTimer);
+  if (S.auto === "off") return;
+  autoTimer = setTimeout(() => {
+    if (S.auto === "one") { if (S.cur && !same(S.draft, S.cur.settings)) applyOne(true); }
+    else if (!same(S.draft, S.defaults) || S.items.some(it => !same(it.settings, S.draft))) applyAll(true);
+  }, 350);
+}
+function syncAuto() { for (const b of $$("#autoSeg button")) b.classList.toggle("on", b.dataset.a === S.auto); }
+for (const b of $$("#autoSeg button")) b.onclick = () => {
+  S.auto = b.dataset.a; save("auto", S.auto); syncAuto(); syncSettings(); scheduleAuto();
+  toast(S.auto === "one" ? "自动应用：改了设置就直接用到当前这张图" : S.auto === "all" ? "自动应用：改了设置就直接用到所有图（之后加入的图也用它）" : "自动应用已关：改完设置要点「对该图生效」或「对所有图生效」");
 };
+syncAuto();
 
 /* ---------------- compositing & protection mask ---------------- */
 // weights = the painted strokes (grey = share of the original), widened by a soft edge; painted pixels keep their own value
