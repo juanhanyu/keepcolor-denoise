@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 PORT = int(os.environ.get("DENOISE_PORT", "7870"))  # the env var is for testing a second copy
-API = 1  # bumped whenever the page needs something new from this server; the page checks it
+API = 2  # bumped whenever the page needs something new from this server; the page checks it
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
 RUNTIME = ROOT / "runtime"
@@ -177,7 +177,8 @@ def add_image(data, name):
 
 def settings_from(q):
     g = lambda k, d: q.get(k, [d])[0]  # noqa: E731
-    return kc.Settings(apisr=g("apisr", "0") == "1", apisr_model=g("apisr_model", "2x_rrdb"),
+    return kc.Settings(speck=g("speck", "0") == "1", speck_size=int(float(g("speck_size", "3"))),
+                       speck_thr=float(g("speck_thr", "10")) / 100, apisr=g("apisr", "0") == "1", apisr_model=g("apisr_model", "2x_rrdb"),
                        apisr_amount=float(g("apisr_amount", "100")) / 100, drunet=g("drunet", "1") == "1",
                        sigma=float(g("sigma", "10")), l0=g("l0", "0") == "1", lam=float(g("lam", "0.001"))).clean()
 
