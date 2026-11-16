@@ -233,14 +233,15 @@ def tiled(fn, x, tile, overlap=32, stop=None):
 
 
 def _open_line(x, k, dy, dx):
-    """Morphological opening of 1x1xHxW with a k-pixel line in direction (dy, dx): keeps what is k long that way."""
-    r = k // 2
+    """Morphological opening of 1x1xHxW with a k-pixel line in direction (dy, dx): keeps what is k long that way.
+    k may be even: the line then reaches one pixel further forward than back, and the dilation uses its mirror."""
+    a, b = (k - 1) // 2, k // 2
     h, w = x.shape[-2:]
 
-    def shifts(t):
-        p = F.pad(t, (r, r, r, r), mode="replicate")
-        return torch.stack([p[..., r + i * dy:r + i * dy + h, r + i * dx:r + i * dx + w] for i in range(-r, r + 1)])
-    return shifts(shifts(x).min(0).values).max(0).values
+    def shifts(t, lo, hi):
+        p = F.pad(t, (b, b, b, b), mode="replicate")
+        return torch.stack([p[..., b + i * dy:b + i * dy + h, b + i * dx:b + i * dx + w] for i in range(lo, hi + 1)])
+    return shifts(shifts(x, -a, b).min(0).values, -b, a).max(0).values
 
 
 @torch.no_grad()
@@ -255,7 +256,7 @@ def despeckle(x, size=3, thr=0.10, stop=None, report=None):
     """
     if report:
         report("去白噪点")
-    k = size + 2 if size % 2 else size + 1
+    k = size + 1  # a line one pixel longer than the largest speck
     low = x.min(1, keepdim=True).values
     opened = low
     for i, (dy, dx) in enumerate(((0, 1), (1, 0), (1, 1), (1, -1))):
