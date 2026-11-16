@@ -2,6 +2,8 @@
 original colours.
 
 Steps, each optional, in this order:
+  0. Speck removal      small bright white specks (a few pixels across) are found by their shape and filled in from
+                        the pixels around them; everything else is left untouched (off by default)
   1. APISR sharpening   an anime/illustration restoration network, run at full size and blended with the input
                         (changes colours a little, so it is off by default)
   2. DRUNet denoising   a Gaussian denoiser applied to the 2x2 pixel-shuffled sub-images of the picture: neighbouring
@@ -12,6 +14,7 @@ Steps, each optional, in this order:
   python denoise.py photo.png                    # DRUNet only, result in ./output
   python denoise.py a.png b.jpg --apisr          # APISR 2x first, then DRUNet
   python denoise.py folder --l0 --out clean      # every image in a folder, DRUNet then L0
+  python denoise.py photo.png --despeckle        # white specks first, then DRUNet
 """
 import argparse
 import hashlib
@@ -61,6 +64,9 @@ APISR = {
 
 @dataclass(frozen=True)
 class Settings:
+    speck: bool = False          # remove small bright white specks first
+    speck_size: int = 3          # largest speck, in pixels across
+    speck_thr: float = 0.10      # how much brighter than its surroundings a speck must be (0..1)
     apisr: bool = False          # sharpen with APISR first (changes colours a little)
     apisr_model: str = "2x_rrdb"
     apisr_amount: float = 1.0    # 0..1: how much of the APISR result is blended over the input
@@ -73,7 +79,9 @@ class Settings:
         """The same settings with every value clamped into its valid range."""
         return replace(self, apisr_model=self.apisr_model if self.apisr_model in APISR else "2x_rrdb",
                        apisr_amount=min(max(float(self.apisr_amount), 0.0), 1.0),
-                       sigma=min(max(float(self.sigma), 1.0), 50.0), lam=min(max(float(self.lam), 1e-5), 0.05))
+                       sigma=min(max(float(self.sigma), 1.0), 50.0), lam=min(max(float(self.lam), 1e-5), 0.05),
+                       speck_size=min(max(int(self.speck_size), 1), 15),
+                       speck_thr=min(max(float(self.speck_thr), 0.02), 0.5))
 
 
 class Cancelled(Exception):
@@ -224,6 +232,60 @@ def tiled(fn, x, tile, overlap=32, stop=None):
     return out / weight
 
 
+def _open_line(x, k, dy, dx):
+    """Morphological opening of 1x1xHxW with a k-pixel line in direction (dy, dx): keeps what is k long that way."""
+    r = k // 2
+    h, w = x.shape[-2:]
+
+    def shifts(t):
+        p = F.pad(t, (r, r, r, r), mode="replicate")
+        return torch.stack([p[..., r + i * dy:r + i * dy + h, r + i * dx:r + i * dx + w] for i in range(-r, r + 1)])
+    return shifts(shifts(x).min(0).values).max(0).values
+
+
+@torch.no_grad()
+def despeckle(x, size=3, thr=0.10, stop=None, report=None):
+    """Remove bright white specks up to `size` pixels across from a 1x3xHxW image.
+
+    A speck is short in every direction, a thin highlight line or an edge is long in at least one. So the picture
+    (its darkest channel: white specks are bright in all three) is opened with lines in four directions and the
+    largest result is what the picture looks like without specks; pixels brighter than that by more than thr are the
+    specks. They (and a one-pixel rim) are filled with a blur of the untouched pixels around them; no other pixel
+    changes.
+    """
+    if report:
+        report("去白噪点")
+    k = size + 2 if size % 2 else size + 1
+    low = x.min(1, keepdim=True).values
+    opened = low
+    for i, (dy, dx) in enumerate(((0, 1), (1, 0), (1, 1), (1, -1))):
+        _poll(stop)
+        o = _open_line(low, k, dy, dx)
+        opened = o if i == 0 else torch.maximum(opened, o)
+    mask = F.max_pool2d(((low - opened) > thr).float(), 3, 1, 1)
+    if not mask.any():
+        return x
+    keep = 1 - mask
+    fill, got, sigma = torch.zeros_like(x), torch.zeros_like(mask), 1.0
+    for _ in range(4):  # normalised blur of the kept pixels; wider only where a speck had too few neighbours
+        _poll(stop)
+        r = int(3 * sigma) | 1
+        g = torch.exp(-torch.arange(-r, r + 1, device=x.device, dtype=x.dtype) ** 2 / (2 * sigma * sigma))
+        g = g / g.sum()
+
+        def blur(t):
+            c = t.shape[1]
+            t = F.conv2d(F.pad(t, (r, r, 0, 0), mode="replicate"), g.view(1, 1, 1, -1).expand(c, 1, 1, -1), groups=c)
+            return F.conv2d(F.pad(t, (0, 0, r, r), mode="replicate"), g.view(1, 1, -1, 1).expand(c, 1, -1, 1), groups=c)
+        den = blur(keep)
+        ok = (den > 0.2).float() * (1 - got)
+        fill += ok * blur(x * keep) / den.clamp_min(1e-6)
+        got += ok
+        sigma *= 2
+    fill += (1 - got) * x
+    return (x * keep + fill * mask).clamp_(0, 1)
+
+
 def apisr(x, level, device, stop=None, report=None):
     """APISR at full size: each tile is upscaled by the network and brought straight back to its own size."""
     key, _, scale, tile = APISR[level]
@@ -312,6 +374,9 @@ def process(rgb, st, device, cache=None, stop=None, report=None):
     tag = hashlib.sha1(rgb.tobytes() + repr(rgb.shape).encode()).hexdigest()
     x = to_tensor(rgb, device)
     key = (tag,)
+    if st.speck:
+        key += ("speck", st.speck_size, round(st.speck_thr, 3))
+        x = cache.get(key, lambda: despeckle(x, st.speck_size, st.speck_thr, stop, report), device)
     if st.apisr and st.apisr_amount > 0:
         sharp = cache.get(key + ("apisr", st.apisr_model), lambda: apisr(x, st.apisr_model, device, stop, report), device)
         x = x + st.apisr_amount * (sharp - x)
@@ -335,6 +400,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("inputs", nargs="*", help="images or folders")
     ap.add_argument("--out", default=str(OUTPUT_DIR), help="output folder (default: ./output)")
+    ap.add_argument("--despeckle", action="store_true", help="remove small bright white specks first")
+    ap.add_argument("--speck-size", type=int, default=3, help="largest speck in pixels across (default 3)")
+    ap.add_argument("--speck-thr", type=float, default=0.10,
+                    help="how much brighter than its surroundings a speck is, 0-1 (default 0.10; lower removes more)")
     ap.add_argument("--apisr", action="store_true", help="sharpen with APISR first (changes colours a little)")
     ap.add_argument("--apisr-model", default="2x_rrdb", choices=list(APISR))
     ap.add_argument("--apisr-amount", type=float, default=1.0, help="0-1, share of the APISR result (default 1)")
@@ -353,7 +422,7 @@ def main():
         return
     if not a.inputs:
         ap.error("give at least one image or folder")
-    st = Settings(apisr=a.apisr, apisr_model=a.apisr_model, apisr_amount=a.apisr_amount, drunet=not a.no_drunet,
+    st = Settings(speck=a.despeckle, speck_size=a.speck_size, speck_thr=a.speck_thr, apisr=a.apisr, apisr_model=a.apisr_model, apisr_amount=a.apisr_amount, drunet=not a.no_drunet,
                   sigma=a.sigma, l0=a.l0, lam=a.lam)
     device = a.device or default_device()
     files = []
