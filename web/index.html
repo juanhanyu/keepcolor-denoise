@@ -333,7 +333,7 @@
           <input type="range" id="sDiff" min="2" max="40" step="1">
           <div class="ends"><span>小改动也涂</span><span>只涂改得多的</span></div>
         </div>
-        <p class="hint">不想被处理的地方（小字、细纹理、腮红排线）涂上，就按比例换回原图，马上生效，不用重算。「自动涂改动部分」会把这张图被改得多的地方（常常就是被抹掉的细节、高光）一次涂上，不该保护的再用橡皮擦掉。</p>
+        <p class="hint">不想被处理的地方（小字、细纹理、腮红排线）涂上，就按比例换回原图，马上生效，不用重算。笔刷工具条里的「改动」模式（D）只涂笔刷扫过处被改动的像素；「自动涂改动部分」是整张图一次涂上。两者都按下面的「改动阈值」判断。</p>
         <div class="protect" id="protectSum" hidden><span class="dot"></span><span id="protectText"></span><button id="clearMask">清除</button></div>
       </section>
     </div>
@@ -367,7 +367,7 @@
       <span class="tag l" id="tagL" hidden>原图</span><span class="tag r" id="tagR" hidden>结果</span>
       <div class="divider" id="divider" hidden><div class="knob" id="knob" tabindex="0" role="slider" aria-label="对比分割线"><svg class="i"><use href="#i-lr"/></svg></div></div>
       <div class="brushbar" id="brushbar" hidden>
-        <div class="seg"><button data-t="brush" class="on" title="画笔（B）"><svg class="i"><use href="#i-brush"/></svg></button><button data-t="erase" title="橡皮（E，或右键拖动）"><svg class="i"><use href="#i-eraser"/></svg></button></div>
+        <div class="seg"><button data-t="brush" class="on" title="画笔（B）"><svg class="i"><use href="#i-brush"/></svg></button><button data-t="diff" title="涂抹修改部分（D）：笔刷扫过的地方，只有被处理改动过的像素（超过「改动阈值」）才进保护区">改动</button><button data-t="erase" title="橡皮（E，或右键拖动）"><svg class="i"><use href="#i-eraser"/></svg></button></div>
         <span class="sep"></span>
         <label title="画笔大小，按原图像素（[ ]）">大小<input type="range" id="bSize" min="2" max="300" step="1"><output class="num" id="bSizeV"></output></label>
         <label title="接下来几笔换回原图的比例；100% 就是完全不处理">恢复原图<input type="range" id="bMix" min="5" max="100" step="5"><output class="num" id="bMixV"></output></label>
@@ -420,7 +420,8 @@
     <div><span>按住看原图</span><span><kbd>Z</kbd></span></div>
     <div><span>适合画面 / 1:1</span><span><kbd>F</kbd> <kbd>0</kbd></span></div>
     <div><span>保护笔刷 / 橡皮</span><span><kbd>B</kbd> <kbd>E</kbd></span></div>
-    <div><span>自动涂改动部分</span><span><kbd>A</kbd></span></div>
+    <div><span>涂抹修改部分（笔刷只涂被改动的像素）</span><span><kbd>D</kbd></span></div>
+    <div><span>自动涂改动部分（整张图）</span><span><kbd>A</kbd></span></div>
     <div><span>笔刷大小</span><span><kbd>[</kbd> <kbd>]</kbd></span></div>
     <div><span>撤销 / 重做</span><span><kbd>Ctrl</kbd><kbd>Z</kbd> <kbd>+Shift</kbd></span></div>
     <div><span>按住看涂过的范围</span><span><kbd>M</kbd></span></div>
@@ -994,38 +995,71 @@ function clearMask() {
   toast("已清除保护区（Ctrl+Z 可撤销）");
 }
 $("#bClear").onclick = $("#clearMask").onclick = clearMask;
-/* ---------------- auto-fill the changed parts ---------------- */
-// Every pixel the processing changed by more than the threshold (largest channel difference, in % of full range) goes
-// into the protected area at the current "restore" share, with a one-pixel rim; what was painted before stays.
-function autoChanged() {
-  const it = S.cur;
-  if (!it) return;
+/* ---------------- the changed parts ---------------- */
+// Pixels the processing changed by more than the threshold (largest channel difference, in % of full range), with a
+// one-pixel rim. Worked out once per result and threshold; the canvas has them opaque, for masking a brush stroke.
+function changedMask(it) {
   const res = it.result && resultImg(it);
-  if (!res || !it.srcImg) return toast(it.result ? "结果还在加载，稍等再试" : "这张图还没处理完，处理完才能找出改动部分");
-  if (S.painting) endStroke();
+  if (!res || !it.srcImg) return null;
+  const key = it.result.rid + "|" + S.brush.diff;
+  if (it.changed && it.changed.key === key) return it.changed;
   const w = it.w, h = it.h, c = mk(w, h), g = ctx(c, true);
   g.drawImage(it.srcImg, 0, 0);
   const a = g.getImageData(0, 0, w, h).data;
-  g.clearRect(0, 0, w, h); g.drawImage(res, 0, 0);
+  g.clearRect(0, 0, w, h); g.imageSmoothingQuality = "high"; g.drawImage(res, 0, 0, w, h);  // a result of another size is compared at the source size
   const b = g.getImageData(0, 0, w, h).data;
-  const thr = S.brush.diff * 2.55, hit = new Uint8Array(w * h);
+  const thr = S.brush.diff * 2.55, raw = new Uint8Array(w * h), hit = new Uint8Array(w * h);
+  for (let i = 0, p = 0; p < raw.length; i += 4, p++)
+    if (Math.max(Math.abs(a[i] - b[i]), Math.abs(a[i + 1] - b[i + 1]), Math.abs(a[i + 2] - b[i + 2])) > thr) raw[p] = 1;
+  const img = g.createImageData(w, h), d = img.data;
   let n = 0;
-  for (let i = 0, p = 0; p < hit.length; i += 4, p++) {
-    const d = Math.max(Math.abs(a[i] - b[i]), Math.abs(a[i + 1] - b[i + 1]), Math.abs(a[i + 2] - b[i + 2]));
-    if (d > thr) { hit[p] = 1; n++; }
-  }
-  if (!n) return toast(`没有超过阈值（${S.brush.diff}%）的改动；把「改动阈值」调低再试`);
-  pushUndo(it);
-  const pg = ctx(it.paint, true), img = pg.getImageData(0, 0, w, h), d = img.data, v = Math.round(S.brush.mix / 100 * 255);
-  let filled = 0;
   for (let y = 0, p = 0; y < h; y++) for (let x = 0; x < w; x++, p++) {
-    if (!(hit[p] || (x && hit[p - 1]) || (x < w - 1 && hit[p + 1]) || (y && hit[p - w]) || (y < h - 1 && hit[p + w]))) continue;
-    d[p * 4] = d[p * 4 + 1] = d[p * 4 + 2] = v; d[p * 4 + 3] = 255; filled++;
+    if (!(raw[p] || (x && raw[p - 1]) || (x < w - 1 && raw[p + 1]) || (y && raw[p - w]) || (y < h - 1 && raw[p + w]))) continue;
+    hit[p] = 1; d[p * 4 + 3] = 255; n++;
   }
+  g.putImageData(img, 0, 0);
+  return it.changed = { key, hit, canvas: c, n };
+}
+const notReady = it => toast(it.result ? "结果还在加载，稍等再试" : "这张图还没处理完，处理完才能找出改动部分");
+// the whole picture at once: every changed pixel goes into the protected area at the current "restore" share
+function autoChanged() {
+  const it = S.cur;
+  if (!it) return;
+  const m = changedMask(it);
+  if (!m) return notReady(it);
+  if (!m.n) return toast(`没有超过阈值（${S.brush.diff}%）的改动；把「改动阈值」调低再试`);
+  if (S.painting) endStroke();
+  pushUndo(it);
+  const w = it.w, h = it.h, pg = ctx(it.paint, true), img = pg.getImageData(0, 0, w, h), d = img.data, v = Math.round(S.brush.mix / 100 * 255);
+  for (let p = 0; p < m.hit.length; p++) if (m.hit[p]) { d[p * 4] = d[p * 4 + 1] = d[p * 4 + 2] = v; d[p * 4 + 3] = 255; }
   pg.putImageData(img, 0, 0);
   it.hasMask = true;
   composite(); scheduleSave(it); syncPanel(); renderStrip();
-  toast(`已涂上改动部分（约占画面 ${(filled / (w * h) * 100).toFixed(filled / (w * h) < 0.1 ? 1 : 0)}%，恢复原图 ${S.brush.mix}%）。按住 M 看范围，不该保护的用橡皮擦掉（Ctrl+Z 可撤销）`, "", 6000);
+  toast(`已涂上改动部分（约占画面 ${(m.n / (w * h) * 100).toFixed(m.n / (w * h) < 0.1 ? 1 : 0)}%，恢复原图 ${S.brush.mix}%）。按住 M 看范围，不该保护的用橡皮擦掉（Ctrl+Z 可撤销）`, "", 6000);
+}
+// the "changed parts" brush: one stroke segment, kept only where the picture was changed
+const segC = mk();
+function paintChanged(it, p, v) {
+  const m = changedMask(it);
+  if (!m) return;
+  if (segC.width !== it.w || segC.height !== it.h) { segC.width = it.w; segC.height = it.h; }
+  const r = S.brush.size / 2 + 2, q = last || p;
+  const x0 = Math.max(0, Math.floor(Math.min(p[0], q[0]) - r)), y0 = Math.max(0, Math.floor(Math.min(p[1], q[1]) - r));
+  const x1 = Math.min(it.w, Math.ceil(Math.max(p[0], q[0]) + r)), y1 = Math.min(it.h, Math.ceil(Math.max(p[1], q[1]) + r));
+  if (x1 <= x0 || y1 <= y0) return;
+  const g = ctx(segC);
+  g.save();
+  g.beginPath(); g.rect(x0, y0, x1 - x0, y1 - y0); g.clip();  // everything below stays inside this segment's box
+  g.clearRect(x0, y0, x1 - x0, y1 - y0);
+  g.strokeStyle = g.fillStyle = `rgb(${v},${v},${v})`;
+  g.lineWidth = S.brush.size; g.lineCap = g.lineJoin = "round";
+  g.beginPath();
+  if (last) { g.moveTo(last[0], last[1]); g.lineTo(p[0], p[1]); g.stroke(); }
+  else { g.arc(p[0], p[1], S.brush.size / 2, 0, Math.PI * 2); g.fill(); }
+  g.globalCompositeOperation = "destination-in";
+  g.drawImage(m.canvas, x0, y0, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0);
+  g.restore();
+  ctx(it.paint, true).drawImage(segC, x0, y0, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0);
 }
 $("#autoDiffBtn").onclick = autoChanged;
 $("#sDiff").value = S.brush.diff; $("#vDiff").textContent = S.brush.diff + "%"; paintRange($("#sDiff"));
@@ -1039,20 +1073,23 @@ let last = null, stroke = "brush", drag = null, cursorAt = null;
 const toImg = (e, r) => [(e.clientX - r.left - S.vp.x) / S.vp.s, (e.clientY - r.top - S.vp.y) / S.vp.s];
 function paintTo(p) {
   const it = S.cur, g = ctx(it.paint, true), v = stroke === "erase" ? 0 : Math.round(S.brush.mix / 100 * 255);
-  g.strokeStyle = g.fillStyle = `rgb(${v},${v},${v})`;
-  g.lineWidth = S.brush.size; g.lineCap = g.lineJoin = "round";
-  g.beginPath();
-  if (last) { g.moveTo(last[0], last[1]); g.lineTo(p[0], p[1]); g.stroke(); }
-  else { g.arc(p[0], p[1], S.brush.size / 2, 0, Math.PI * 2); g.fill(); }
+  if (stroke === "diff") paintChanged(it, p, v);
+  else {
+    g.strokeStyle = g.fillStyle = `rgb(${v},${v},${v})`;
+    g.lineWidth = S.brush.size; g.lineCap = g.lineJoin = "round";
+    g.beginPath();
+    if (last) { g.moveTo(last[0], last[1]); g.lineTo(p[0], p[1]); g.stroke(); }
+    else { g.arc(p[0], p[1], S.brush.size / 2, 0, Math.PI * 2); g.fill(); }
+  }
   last = p;
-  if (stroke === "brush") it.hasMask = true;
+  if (stroke !== "erase") it.hasMask = true;
   scheduleComposite();
 }
 function endStroke() {
   if (!S.painting) return;
   S.painting = false; S.brush.painting = false; last = null;
   const it = S.cur;
-  if (it) { if (stroke === "erase") it.hasMask = anyPaint(it); composite(); scheduleSave(it); syncPanel(); renderStrip(); }
+  if (it) { if (stroke !== "brush") it.hasMask = anyPaint(it); composite(); scheduleSave(it); syncPanel(); renderStrip(); }
 }
 function moveCursor() {
   const c = $("#cursor");
@@ -1069,6 +1106,7 @@ stage.addEventListener("pointerdown", e => {
   if (e.target.closest("#divider") && !S.brush.on) { drag = { kind: "split" }; stage.setPointerCapture(e.pointerId); return; }
   if (S.brush.on && !S.space && (e.button === 0 || e.button === 2) && S.cur.result) {
     stroke = e.button === 2 ? "erase" : S.brush.tool;
+    if (stroke === "diff" && !changedMask(S.cur)) return notReady(S.cur);
     pushUndo(S.cur);
     S.painting = true; S.brush.painting = true; last = null;
     stage.setPointerCapture(e.pointerId);
@@ -1112,9 +1150,10 @@ addEventListener("keydown", e => {
     x: () => { if (!e.repeat && S.cur.result) { S.view = S.view === "after" ? "before" : "after"; render(); } },
     z: () => { if (!e.repeat) { S.peek = true; render(); } },
     m: () => { if (!e.repeat) { S.brush.peekMask = true; render(); } },
-    b: () => { if (!e.repeat) setBrush(!S.brush.on || S.brush.tool === "erase", "brush"); },
+    b: () => { if (!e.repeat) setBrush(!S.brush.on || S.brush.tool !== "brush", "brush"); },
     a: () => { if (!e.repeat) autoChanged(); },
     e: () => setBrush(true, "erase"),
+    d: () => { if (!e.repeat) setBrush(!(S.brush.on && S.brush.tool === "diff"), "diff"); },
     escape: () => setBrush(false),
     "[": () => { S.brush.size = Math.max(2, Math.round(S.brush.size / 1.2)); syncBrushBar(); moveCursor(); },
     "]": () => { S.brush.size = Math.min(300, Math.round(S.brush.size * 1.2) + 1); syncBrushBar(); moveCursor(); },
