@@ -239,6 +239,7 @@
   <symbol id="i-steps" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8.2 7 10 4-1.8 7-5.5 7-10V6z"/></symbol>
   <symbol id="i-brush" viewBox="0 0 24 24"><path d="M14.5 4.5 19.5 9.5 11 18a3 3 0 0 1-2.1.9H5v-3.9A3 3 0 0 1 5.9 13z"/><path d="m13 6 5 5"/></symbol>
+  <symbol id="i-brush-diff" viewBox="0 0 24 24"><g transform="translate(-1.5 3.6) scale(.85)"><path d="M14.5 4.5 19.5 9.5 11 18a3 3 0 0 1-2.1.9H5v-3.9A3 3 0 0 1 5.9 13z"/><path d="m13 6 5 5"/></g><path d="m19 1.8 1 2.2 2.2 1-2.2 1-1 2.2-1-2.2-2.2-1 2.2-1z"/></symbol>
   <symbol id="i-eraser" viewBox="0 0 24 24"><path d="m7 21-4-4 10-10 8 8-6 6z"/><path d="M7 21h13M9 11l6 6"/></symbol>
   <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
   <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></symbol>
@@ -377,7 +378,7 @@
       <span class="tag l" id="tagL" hidden>原图</span><span class="tag r" id="tagR" hidden>结果</span>
       <div class="divider" id="divider" hidden><div class="knob" id="knob" tabindex="0" role="slider" aria-label="对比分割线"><svg class="i"><use href="#i-lr"/></svg></div></div>
       <div class="brushbar" id="brushbar" hidden>
-        <div class="seg"><button data-t="brush" class="on" title="画笔（B）"><svg class="i"><use href="#i-brush"/></svg></button><button data-t="diff" title="涂抹修改部分（D）：笔刷扫过的地方，只有被处理改动过的像素（超过「改动阈值」）才进保护区">改动</button><button data-t="erase" title="橡皮（E，或右键拖动）"><svg class="i"><use href="#i-eraser"/></svg></button></div>
+        <div class="seg"><button data-t="brush" class="on" title="画笔（B）"><svg class="i"><use href="#i-brush"/></svg></button><button data-t="diff" title="涂抹修改部分（D）：笔刷扫过的地方，只有被处理改动过的像素（超过「改动阈值」）才进保护区"><svg class="i"><use href="#i-brush-diff"/></svg></button><button data-t="erase" title="橡皮（E，或右键拖动）"><svg class="i"><use href="#i-eraser"/></svg></button></div>
         <span class="sep"></span>
         <label title="画笔大小，按原图像素（[ ]）">大小<input type="range" id="bSize" min="2" max="300" step="1"><output class="num" id="bSizeV"></output></label>
         <label title="接下来几笔换回原图的比例；100% 就是完全不处理">恢复原图<input type="range" id="bMix" min="5" max="100" step="5"><output class="num" id="bMixV"></output></label>
