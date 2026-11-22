@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 PORT = int(os.environ.get("DENOISE_PORT", "7870"))  # the env var is for testing a second copy
-API = 1  # bumped whenever the page needs something new from this server; the page checks it
+API = 3  # bumped whenever the page needs something new from this server; the page checks it
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
 RUNTIME = ROOT / "runtime"
@@ -177,9 +177,12 @@ def add_image(data, name):
 
 def settings_from(q):
     g = lambda k, d: q.get(k, [d])[0]  # noqa: E731
-    return kc.Settings(apisr=g("apisr", "0") == "1", apisr_model=g("apisr_model", "2x_rrdb"),
+    return kc.Settings(speck=g("speck", "0") == "1", speck_size=int(float(g("speck_size", "2"))),
+                       speck_thr=float(g("speck_thr", "10")) / 100, speck_ratio=float(g("speck_ratio", "100")) / 100, apisr=g("apisr", "0") == "1", apisr_model=g("apisr_model", "2x_rrdb"),
                        apisr_amount=float(g("apisr_amount", "100")) / 100, drunet=g("drunet", "1") == "1",
-                       sigma=float(g("sigma", "10")), l0=g("l0", "0") == "1", lam=float(g("lam", "0.001"))).clean()
+                       sigma=float(g("sigma", "10")), l0=g("l0", "0") == "1", lam=float(g("lam", "0.001")),
+                       sr=g("sr", "0") == "1", sr_mode=g("sr_mode", "4x"), sr_w=int(float(g("sr_w", "0") or 0)),
+                       sr_h=int(float(g("sr_h", "0") or 0))).clean()
 
 
 def run_job(iid, st, job):
@@ -193,8 +196,9 @@ def run_job(iid, st, job):
             t0 = time.time()
             res = kc.process(source_rgb(iid), st, DEVICE, cache, stop, stage)
             rid = uuid.uuid4().hex
-            (TMP / f"{rid}.png").write_bytes(kc.png_bytes(res, meta["alpha"], meta["icc"]))
-            return rid, time.time() - t0
+            h, w = res.shape[:2]  # larger or smaller than the source when the super-resolution step resizes
+            (TMP / f"{rid}.png").write_bytes(kc.png_bytes(res, kc.fit_alpha(meta["alpha"], w, h), meta["icc"]))
+            return rid, time.time() - t0, w, h
         finally:
             progress.update(busy=False, stage="", job="")
             cancelled.discard(job)
@@ -208,16 +212,22 @@ def save_result(iid, rid, mask_png, name):
     """Write the result to the output folder; a protection mask (grey = share of the original) is blended in first."""
     meta = images[iid]
     res = np.asarray(Image.open(TMP / f"{rid}.png").convert("RGB"))
+    h, w = res.shape[:2]
     if mask_png:
-        m = np.asarray(Image.open(io.BytesIO(mask_png)).convert("L"), np.float32)[..., None] / 255
-        if m.shape[:2] != res.shape[:2]:
+        mask = Image.open(io.BytesIO(mask_png)).convert("L")
+        src = source_rgb(iid)
+        if mask.size != (meta["w"], meta["h"]):
             raise ValueError("保护区大小和图片不一致")
-        res = np.rint(res * (1 - m) + source_rgb(iid) * m).astype(np.uint8)
+        if (w, h) != mask.size:  # a resized (super-resolution) result: the mask and the original follow its size
+            mask = mask.resize((w, h), Image.BILINEAR)
+            src = np.asarray(Image.fromarray(src).resize((w, h), Image.LANCZOS))
+        m = np.asarray(mask, np.float32)[..., None] / 255
+        res = np.rint(res * (1 - m) + src * m).astype(np.uint8)
     out = output_dir()
     out.mkdir(parents=True, exist_ok=True)
     target = out / f"{safe_stem(name or meta['name'])}_clean.png"
     part = target.with_name(target.name + ".part")
-    part.write_bytes(kc.png_bytes(res, meta["alpha"], meta["icc"], level=4))
+    part.write_bytes(kc.png_bytes(res, kc.fit_alpha(meta["alpha"], w, h), meta["icc"], level=4))
     part.replace(target)
     return target
 
@@ -278,7 +288,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/info":
             return self.json({"app": "denoise", "api": API, "version": VERSION, "pid": os.getpid(), "device": DEVICE_NAME,
                               "busy": progress["busy"], "output": str(output_dir()), "default_output": str(kc.OUTPUT_DIR),
-                              "custom_output": bool(config().get("output")), "apisr": model_info()})
+                              "custom_output": bool(config().get("output")), "apisr": model_info(),
+                              "sr": {"label": kc.SR_LABEL, "scale": kc.SR_SCALE, "max_pixels": kc.SR_MAX_PIXELS,
+                                     "have": (kc.MODEL_DIR / kc.WEIGHTS[kc.SR_KEY][0]).exists()}})
         if path == "/api/progress":
             p = dict(progress)
             p["elapsed"] = round(time.time() - p["started"], 1) if p["busy"] else 0
@@ -320,10 +332,10 @@ class Handler(BaseHTTPRequestHandler):
                 if iid not in images:
                     raise ValueError("这张图已经不在了，请重新添加")
                 try:
-                    rid, sec = run_job(iid, settings_from(q), arg("job")[:64])
+                    rid, sec, w, h = run_job(iid, settings_from(q), arg("job")[:64])
                 except kc.Cancelled:
                     return self.json({"cancelled": True}, 409)
-                return self.json({"rid": rid, "elapsed": round(sec, 1)})
+                return self.json({"rid": rid, "elapsed": round(sec, 1), "w": w, "h": h})
             if u.path == "/api/cancel":
                 if arg("job"):
                     cancelled.add(arg("job")[:64])

@@ -111,6 +111,10 @@
   .levels button small { display: block; font-weight: 400; font-size: 11px; color: var(--faint); }
   .levels button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
   .levels button[aria-pressed="true"] small { color: var(--on-accent); opacity: .7; }
+  .levels.three { grid-template-columns: repeat(3, 1fr); }
+  .srsize { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--muted); }
+  .srsize input { flex: 1; min-width: 0; height: 32px; padding: 0 9px; border-radius: 9px; border: 1px solid var(--line-2); background: var(--panel); color: var(--text); font: inherit; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .srsize input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .adv .reset { margin-top: 12px; color: var(--accent); font-size: 12.5px; }
   input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; margin: 4px 0 0; background: transparent; cursor: pointer; --p: 50%; }
   input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(var(--accent), var(--accent)) 0 / var(--p) 100% no-repeat, var(--line-2); }
@@ -119,6 +123,7 @@
   input[type=range]::-moz-range-progress { height: 4px; background: var(--accent); }
   input[type=range]:disabled { opacity: .4; }
   .pending { margin-top: 12px; padding: 8px 10px; border-radius: 9px; background: var(--warn-soft); color: var(--warn); font-size: 12.5px; }
+  .auto { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; font-size: 12.5px; color: var(--text-2); }
   .apply { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
   .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 38px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--panel); font-weight: 600; font-size: 13px; transition: background .12s; }
   .btn:hover:not(:disabled) { background: var(--panel-2); }
@@ -238,6 +243,7 @@
   <symbol id="i-steps" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8.2 7 10 4-1.8 7-5.5 7-10V6z"/></symbol>
   <symbol id="i-brush" viewBox="0 0 24 24"><path d="M14.5 4.5 19.5 9.5 11 18a3 3 0 0 1-2.1.9H5v-3.9A3 3 0 0 1 5.9 13z"/><path d="m13 6 5 5"/></symbol>
+  <symbol id="i-brush-diff" viewBox="0 0 24 24"><g transform="translate(-1.5 3.6) scale(.85)"><path d="M14.5 4.5 19.5 9.5 11 18a3 3 0 0 1-2.1.9H5v-3.9A3 3 0 0 1 5.9 13z"/><path d="m13 6 5 5"/></g><path d="m19 1.8 1 2.2 2.2 1-2.2 1-1 2.2-1-2.2-2.2-1 2.2-1z"/></symbol>
   <symbol id="i-eraser" viewBox="0 0 24 24"><path d="m7 21-4-4 10-10 8 8-6 6z"/><path d="M7 21h13M9 11l6 6"/></symbol>
   <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
   <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></symbol>
@@ -275,14 +281,51 @@
 
       <section class="sec">
         <h2><svg class="i"><use href="#i-steps"/></svg>处理步骤<span class="pill" id="scopePill"></span></h2>
+        <label class="step" id="rowSpeck"><input type="checkbox" id="sSpeck"><span class="sw"></span>
+          <b>去白噪点</b><small>第一步：把零星的高亮白点（几个像素大）填平，其他像素不动；细小的真实高光也可能被去掉</small></label>
         <label class="step" id="rowApisr"><input type="checkbox" id="sApisr"><span class="sw"></span>
           <b>APISR 锐化 <em class="warn">会改变原有色彩</em></b><small>先把线条锐化、清理一遍，再交给后面的步骤</small></label>
         <label class="step" id="rowDrunet"><input type="checkbox" id="sDrunet"><span class="sw"></span>
           <b>DRUNet 去噪</b><small>原尺寸去掉伪影、振铃、摩尔纹、鱼鳞纹；不改颜色，不重画线条</small></label>
         <label class="step" id="rowL0"><input type="checkbox" id="sL0"><span class="sw"></span>
           <b>L0 平滑</b><small>把色块里残留的细碎起伏压平；很淡的渐变也会被抹平一些</small></label>
+        <label class="step" id="rowSr"><input type="checkbox" id="sSr"><span class="sw"></span>
+          <b>Real-ESRGAN 4× 超分 <em class="warn">会重画画面</em></b><small>最后一步：整张图直接交给模型放大 4 倍（不先缩小）；色彩和细节会变</small></label>
+        <div class="adv" id="srBox" hidden>
+          <div class="field">
+            <div class="top"><span>输出尺寸</span><output class="num" id="srNote"></output></div>
+            <div class="levels three" id="srModes">
+              <button data-m="4x">4×<small>4 倍分辨率</small></button>
+              <button data-m="orig">原分辨率<small>放大后缩回</small></button>
+              <button data-m="4k">4K<small>3840×2160 内</small></button>
+              <button data-m="1080p">1080P<small>1920×1080 内</small></button>
+              <button data-m="custom">指定<small>自己填尺寸</small></button>
+            </div>
+            <div class="srsize" id="srCustom" hidden>
+              <input type="number" id="sSrW" min="0" max="16384" step="1" inputmode="numeric" placeholder="宽 · 自动" aria-label="输出宽度（像素）">
+              <span>×</span>
+              <input type="number" id="sSrH" min="0" max="16384" step="1" inputmode="numeric" placeholder="高 · 自动" aria-label="输出高度（像素）">
+            </div>
+            <div class="hint" id="srHint" style="margin-top:6px"></div>
+          </div>
+        </div>
         <button class="more" id="moreBtn" aria-expanded="false" aria-controls="adv">更多设置<svg class="i"><use href="#i-chev"/></svg></button>
         <div class="adv" id="adv" hidden>
+          <div class="field">
+            <div class="top"><span>白噪点大小</span><output class="num" id="vSpeckSize"></output></div>
+            <input type="range" id="sSpeckSize" min="1" max="12" step="1">
+            <div class="ends"><span>只去最小的点</span><span>大一些的也去</span></div>
+          </div>
+          <div class="field">
+            <div class="top"><span>白噪点亮度差</span><output class="num" id="vSpeckThr"></output></div>
+            <input type="range" id="sSpeckThr" min="3" max="30" step="1">
+            <div class="ends"><span>去得更多</span><span>只去最亮的</span></div>
+          </div>
+          <div class="field">
+            <div class="top"><span>白噪点去除比例</span><output class="num" id="vSpeckRatio"></output></div>
+            <input type="range" id="sSpeckRatio" min="0" max="100" step="5">
+            <div class="ends"><span>随机少去一些</span><span>全部去掉</span></div>
+          </div>
           <div class="field">
             <div class="top"><span>APISR 档位</span><output id="lvlNote"></output></div>
             <div class="levels" id="levels"></div>
@@ -310,12 +353,22 @@
           <button class="btn" id="applyOne" title="只用到当前这张图">对该图生效</button>
           <button class="btn primary" id="applyAll" title="用到所有图片，之后加入的图也用它">对所有图生效</button>
         </div>
+        <div class="auto" title="打开后改了设置就自动应用，不用再点上面的按钮">
+          <span>自动应用</span>
+          <div class="seg" id="autoSeg"><button data-a="off">关</button><button data-a="one">该图</button><button data-a="all">所有图</button></div>
+        </div>
       </section>
 
       <section class="sec">
         <h2><svg class="i"><use href="#i-shield"/></svg>局部保护<span class="pill" id="protectPill">未使用</span></h2>
         <button class="btn wide" id="brushBtn"><svg class="i"><use href="#i-brush"/></svg><span id="brushText">保护笔刷</span><kbd>B</kbd></button>
-        <p class="hint">不想被处理的地方（小字、细纹理、腮红排线）涂上，就按比例换回原图，马上生效，不用重算。</p>
+        <button class="btn wide" id="autoDiffBtn" style="margin-top:6px" title="自动涂改动部分（A）：把处理前后差别超过阈值的地方填进保护区，按当前「恢复原图」比例换回原图"><svg class="i"><use href="#i-shield"/></svg><span>自动涂改动部分</span><kbd>A</kbd></button>
+        <div class="field" style="margin-top:10px">
+          <div class="top"><span>改动阈值</span><output class="num" id="vDiff"></output></div>
+          <input type="range" id="sDiff" min="2" max="40" step="1">
+          <div class="ends"><span>小改动也涂</span><span>只涂改得多的</span></div>
+        </div>
+        <p class="hint">不想被处理的地方（小字、细纹理、腮红排线）涂上，就按比例换回原图，马上生效，不用重算。笔刷工具条里的「改动」模式（D）只涂笔刷扫过处被改动的像素；「自动涂改动部分」是整张图一次涂上。两者都按下面的「改动阈值」判断。</p>
         <div class="protect" id="protectSum" hidden><span class="dot"></span><span id="protectText"></span><button id="clearMask">清除</button></div>
       </section>
     </div>
@@ -345,11 +398,12 @@
       <div class="frame" id="frame" hidden></div>
       <img class="layer" id="lOrig" alt="">
       <canvas class="layer" id="lRes"></canvas>
+      <canvas class="layer" id="lProt"></canvas>
       <canvas class="layer" id="tint"></canvas>
       <span class="tag l" id="tagL" hidden>原图</span><span class="tag r" id="tagR" hidden>结果</span>
       <div class="divider" id="divider" hidden><div class="knob" id="knob" tabindex="0" role="slider" aria-label="对比分割线"><svg class="i"><use href="#i-lr"/></svg></div></div>
       <div class="brushbar" id="brushbar" hidden>
-        <div class="seg"><button data-t="brush" class="on" title="画笔（B）"><svg class="i"><use href="#i-brush"/></svg></button><button data-t="erase" title="橡皮（E，或右键拖动）"><svg class="i"><use href="#i-eraser"/></svg></button></div>
+        <div class="seg"><button data-t="brush" class="on" title="画笔（B）"><svg class="i"><use href="#i-brush"/></svg></button><button data-t="diff" title="涂抹修改部分（D）：笔刷扫过的地方，只有被处理改动过的像素（超过「改动阈值」）才进保护区"><svg class="i"><use href="#i-brush-diff"/></svg></button><button data-t="erase" title="橡皮（E，或右键拖动）"><svg class="i"><use href="#i-eraser"/></svg></button></div>
         <span class="sep"></span>
         <label title="画笔大小，按原图像素（[ ]）">大小<input type="range" id="bSize" min="2" max="300" step="1"><output class="num" id="bSizeV"></output></label>
         <label title="接下来几笔换回原图的比例；100% 就是完全不处理">恢复原图<input type="range" id="bMix" min="5" max="100" step="5"><output class="num" id="bMixV"></output></label>
@@ -391,7 +445,7 @@
 <dialog id="helpDlg"><div class="dlg">
   <h3>Denoise 怎么用</h3>
   <p>放进图片就按「处理步骤」处理：默认只开 <b>DRUNet 去噪</b>，并且对所有图片生效。改了设置后点 <b>对该图生效</b> 只改当前这张，点 <b>对所有图生效</b> 改全部（之后加入的图也用它）。</p>
-  <p>步骤顺序：APISR 锐化 → DRUNet 去噪 → L0 平滑。APISR 会改变原有色彩；DRUNet 和 L0 不改颜色。</p>
+  <p>步骤顺序：去白噪点 → APISR 锐化 → DRUNet 去噪 → L0 平滑 → Real-ESRGAN 4× 超分。APISR 会改变原有色彩；DRUNet 和 L0 不改颜色；超分是整张重画（RealESRGAN_x4plus_anime_6B，不先缩小），结果可以是 4 倍、原分辨率、4K、1080P（保持原比例）或指定的尺寸。</p>
   <p>结果自动保存到输出文件夹（默认是程序目录下的 output，右上角可以改）。保护笔刷涂过的地方按比例换回原图，保存的就是你看到的。</p>
   <h4>快捷键</h4>
   <div class="keys">
@@ -402,6 +456,8 @@
     <div><span>按住看原图</span><span><kbd>Z</kbd></span></div>
     <div><span>适合画面 / 1:1</span><span><kbd>F</kbd> <kbd>0</kbd></span></div>
     <div><span>保护笔刷 / 橡皮</span><span><kbd>B</kbd> <kbd>E</kbd></span></div>
+    <div><span>涂抹修改部分（笔刷只涂被改动的像素）</span><span><kbd>D</kbd></span></div>
+    <div><span>自动涂改动部分（整张图）</span><span><kbd>A</kbd></span></div>
     <div><span>笔刷大小</span><span><kbd>[</kbd> <kbd>]</kbd></span></div>
     <div><span>撤销 / 重做</span><span><kbd>Ctrl</kbd><kbd>Z</kbd> <kbd>+Shift</kbd></span></div>
     <div><span>按住看涂过的范围</span><span><kbd>M</kbd></span></div>
@@ -418,7 +474,7 @@
 
 <script>
 "use strict";
-const TOKEN = "__TOKEN__", PAGE_API = 1;
+const TOKEN = "__TOKEN__", PAGE_API = 3;
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const save = (k, v) => { try { localStorage.setItem("kc." + k, JSON.stringify(v)); } catch {} };
 const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem("kc." + k)); return v ?? d; } catch { return d; } };
@@ -429,29 +485,61 @@ const jobId = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.rando
 
 /* ---------------- settings ---------------- */
 const LEVELS = [["2x_rrdb", "2× RRDB", "18 MB · 默认"], ["4x_rrdb", "4× RRDB", "18 MB"], ["4x_grl", "4× GRL", "6.5 MB · 慢"], ["4x_dat", "4× DAT", "87 MB · 最慢"]];
-const DEFAULTS = { apisr: false, apisr_model: "2x_rrdb", apisr_amount: 100, drunet: true, sigma: 10, l0: false, lam: 0.001 };
-const norm = s => ({ ...DEFAULTS, ...(s || {}), apisr_model: LEVELS.some(l => l[0] === s?.apisr_model) ? s.apisr_model : "2x_rrdb" });
-// what changes the result: amount and level matter only with APISR on, the L0 strength only with L0 on
-const skey = s => { s = norm(s); return [s.apisr ? `a${s.apisr_model}:${s.apisr_amount}` : "", s.drunet ? `d${s.sigma}` : "", s.l0 ? `l${(+s.lam).toFixed(4)}` : ""].join("|"); };
+const SR_MODES = ["4x", "orig", "4k", "1080p", "custom"], SR_SCALE = 4, SR_BOXES = { "4k": [3840, 2160], "1080p": [1920, 1080] };
+const DEFAULTS = { apisr: false, apisr_model: "2x_rrdb", apisr_amount: 100, drunet: true, sigma: 10, l0: false, lam: 0.001,
+  sr: false, sr_mode: "4x", sr_w: 0, sr_h: 0, speck: false, speck_size: 2, speck_thr: 10, speck_ratio: 100 };
+const px = v => Math.min(65536, Math.max(0, Math.round(+v) || 0));
+const norm = s => ({ ...DEFAULTS, ...(s || {}), apisr_model: LEVELS.some(l => l[0] === s?.apisr_model) ? s.apisr_model : "2x_rrdb",
+  sr_mode: SR_MODES.includes(s?.sr_mode) ? s.sr_mode : "4x", sr_w: px(s?.sr_w), sr_h: px(s?.sr_h) });
+// what changes the result: amount and level matter only with APISR on, the L0 strength only with L0 on, the size only with super-resolution on
+const skey = s => { s = norm(s); return [s.speck ? `k${s.speck_size}:${s.speck_thr}:${s.speck_ratio}` : "", s.apisr ? `a${s.apisr_model}:${s.apisr_amount}` : "", s.drunet ? `d${s.sigma}` : "", s.l0 ? `l${(+s.lam).toFixed(4)}` : "",
+  s.sr ? `s${s.sr_mode}` + (s.sr_mode === "custom" ? `:${s.sr_w}x${s.sr_h}` : "") : ""].join("|"); };
+// size of the result for a w x h picture (the server works it out the same way)
+const SR_RATIOS = [[1, 1], [5, 4], [4, 3], [3, 2], [16, 10], [16, 9], [2, 1], [21, 9]], SR_SNAP = 4;
+// the side worked out from the proportions moves onto a common aspect ratio when that is at most SR_SNAP pixels away
+function srSnap(fixed, free) {
+  let best = free;
+  for (const [a, b] of SR_RATIOS) for (const c of [Math.floor(fixed * a / b + 0.5), Math.floor(fixed * b / a + 0.5)])
+    if (Math.abs(c - free) <= SR_SNAP && (best === free || Math.abs(c - free) < Math.abs(best - free))) best = c;
+  return best;
+}
+function srSize(w, h, s) {
+  if (!s.sr || s.sr_mode === "orig") return [w, h];
+  if (s.sr_mode === "4x") return [w * SR_SCALE, h * SR_SCALE];
+  if (SR_BOXES[s.sr_mode]) {  // fitted into the box in the picture's own proportions; the box is turned for portrait
+    const [long, short] = SR_BOXES[s.sr_mode], f = Math.min(long / Math.max(w, h), short / Math.min(w, h));
+    const tw = Math.max(1, Math.floor(w * f + 0.5)), th = Math.max(1, Math.floor(h * f + 0.5));
+    const wideFixed = (long / Math.max(w, h) <= short / Math.min(w, h)) === (w >= h);
+    return wideFixed ? [tw, srSnap(tw, th)] : [srSnap(th, tw), th];
+  }
+  let tw = s.sr_w, th = s.sr_h;
+  if (!tw && !th) return [w, h];
+  if (!tw) tw = srSnap(th, Math.max(1, Math.floor(w * th / h + 0.5))); else if (!th) th = srSnap(tw, Math.max(1, Math.floor(h * tw / w + 0.5)));
+  return [tw, th];
+}
+const srText = s => s.sr_mode === "4x" ? "4×" : s.sr_mode === "4k" ? "4K" : s.sr_mode === "1080p" ? "1080P" : s.sr_mode === "orig" || (!s.sr_w && !s.sr_h) ? "原分辨率" : `${s.sr_w || "自动"}×${s.sr_h || "自动"}`;
 const same = (a, b) => !!(a && b) && skey(a) === skey(b);
 function describe(s) {
   s = norm(s);
   const parts = [];
+  if (s.speck) parts.push(`去白点 ${s.speck_size}px${s.speck_ratio < 100 ? " " + s.speck_ratio + "%" : ""}`);
   if (s.apisr) parts.push(`APISR ${LEVELS.find(l => l[0] === s.apisr_model)[1]}${s.apisr_amount < 100 ? " " + s.apisr_amount + "%" : ""}`);
   if (s.drunet) parts.push(`DRUNet${s.sigma !== 10 ? " " + s.sigma : ""}`);
   if (s.l0) parts.push(`L0 ${fmtLam(s.lam)}`);
+  if (s.sr) parts.push(`ESRGAN ${srText(s)}`);
   return parts.join(" + ") || "不处理（原图）";
 }
 
+if (load("factory", 0) < 2) { save("defaults", DEFAULTS); save("factory", 2); }  // once: stored settings from older versions go back to the defaults
 const S = {
   items: [], cur: null, queue: [], running: null, info: {},
-  defaults: norm(load("defaults", DEFAULTS)), draft: null,
+  defaults: norm(load("defaults", DEFAULTS)), draft: null, auto: ["one", "all"].includes(load("auto", "off")) ? load("auto", "off") : "off",
   view: "cmp", split: 0.5, vp: null, peek: false, space: false,
-  brush: { on: false, tool: "brush", size: 24, mix: 90, soft: 12, show: false, painting: false, peekMask: false },
+  brush: { on: false, tool: "brush", size: 24, mix: 90, soft: 12, show: false, painting: false, peekMask: false, diff: load("diff", 8) },
 };
 S.draft = { ...S.defaults };
 let nextId = 1;
-const stage = $("#stage"), lOrig = $("#lOrig"), lRes = $("#lRes"), tint = $("#tint");
+const stage = $("#stage"), lOrig = $("#lOrig"), lRes = $("#lRes"), lProt = $("#lProt"), tint = $("#tint");
 
 async function api(path, opts = {}) {
   const r = await fetch(path, { ...opts, headers: { "X-Token": TOKEN, ...(opts.headers || {}) } });
@@ -620,10 +708,11 @@ async function runItem(it) {
   }, 200);
   try {
     const q = new URLSearchParams({ id: it.sid, job: it.job, apisr: s.apisr ? 1 : 0, apisr_model: s.apisr_model, apisr_amount: s.apisr_amount,
-      drunet: s.drunet ? 1 : 0, sigma: s.sigma, l0: s.l0 ? 1 : 0, lam: s.lam });
+      drunet: s.drunet ? 1 : 0, sigma: s.sigma, l0: s.l0 ? 1 : 0, lam: s.lam,
+      speck: s.speck ? 1 : 0, speck_size: s.speck_size, speck_thr: s.speck_thr, speck_ratio: s.speck_ratio, sr: s.sr ? 1 : 0, sr_mode: s.sr_mode, sr_w: s.sr_w, sr_h: s.sr_h });
     const j = await api("/api/process?" + q, { method: "POST", signal: it.ctrl.signal });
     if (it.removed) return;
-    it.result = { rid: j.rid, url: `/api/file/${j.rid}.png`, img: null, settings: s, elapsed: j.elapsed };  // drawn when shown
+    it.result = { rid: j.rid, url: `/api/file/${j.rid}.png`, img: null, settings: s, elapsed: j.elapsed, w: j.w || it.w, h: j.h || it.h };  // drawn when shown
     it.status = "done";
     if (S.cur === it) composite();
     scheduleSave(it, 0);
@@ -653,7 +742,7 @@ function renderLevels() {
   $("#lvlNote").textContent = lvl ? lvl[1] : "";
 }
 function paintRange(el) { el.style.setProperty("--p", ((el.value - el.min) / (el.max - el.min) * 100) + "%"); }
-function editDraft(patch) { S.draft = norm({ ...S.draft, ...patch }); syncSettings(); }
+function editDraft(patch) { S.draft = norm({ ...S.draft, ...patch }); syncSettings(); scheduleAuto(); }
 function baseline() { return S.cur ? S.cur.settings : S.defaults; }
 function syncSettings() {
   const d = S.draft;
@@ -662,10 +751,29 @@ function syncSettings() {
   $("#sAmount").value = d.apisr_amount; $("#vAmount").textContent = d.apisr_amount + "%"; $("#sAmount").disabled = !d.apisr;
   $("#sSigma").value = d.sigma; $("#vSigma").textContent = d.sigma; $("#sSigma").disabled = !d.drunet;
   $("#sLam").value = d.lam; $("#vLam").textContent = fmtLam(d.lam); $("#sLam").disabled = !d.l0;
-  for (const id of ["#sAmount", "#sSigma", "#sLam"]) paintRange($(id));
+  $("#sSpeck").checked = d.speck; $("#rowSpeck").classList.toggle("on", d.speck);
+  $("#sSpeckSize").value = d.speck_size; $("#vSpeckSize").textContent = d.speck_size + " px"; $("#sSpeckSize").disabled = !d.speck;
+  $("#sSpeckThr").value = d.speck_thr; $("#vSpeckThr").textContent = d.speck_thr + "%"; $("#sSpeckThr").disabled = !d.speck;
+  $("#sSpeckRatio").value = d.speck_ratio; $("#vSpeckRatio").textContent = d.speck_ratio + "%"; $("#sSpeckRatio").disabled = !d.speck;
+  for (const id of ["#sAmount", "#sSigma", "#sLam", "#sSpeckSize", "#sSpeckThr", "#sSpeckRatio"]) paintRange($(id));
   renderLevels();
+  $("#sSr").checked = d.sr; $("#rowSr").classList.toggle("on", d.sr); $("#srBox").hidden = !d.sr;
+  for (const b of $$("#srModes button")) b.setAttribute("aria-pressed", d.sr_mode === b.dataset.m);
+  $("#srCustom").hidden = d.sr_mode !== "custom";
+  for (const [id, v] of [["#sSrW", d.sr_w], ["#sSrH", d.sr_h]]) if (document.activeElement !== $(id)) $(id).value = v || "";
+  {
+    const t = S.cur ? srSize(S.cur.w, S.cur.h, { ...d, sr: true }) : null, max = S.info.sr?.max_pixels || 8192 * 8192;
+    const big = !!t && t[0] * t[1] > max;
+    $("#srNote").textContent = t ? `${t[0]} × ${t[1]}` : "";
+    $("#srHint").textContent = big ? `这张图的结果会超过上限（约 ${Math.round(max / 1e6)} 百万像素，如 8192×8192），请选「原分辨率」或填小一些的尺寸。`
+      : d.sr_mode === "custom" ? "只填宽或高，另一边按原图比例（离常见比例差 4 像素以内就取整到那个比例）；两个都填就按填的尺寸（比例不同会拉伸）；都不填等于原分辨率。"
+      : d.sr_mode === "orig" ? "模型放大 4 倍后缩回原图大小：尺寸不变，画面是模型重画的。"
+      : SR_BOXES[d.sr_mode] ? `保持原图长宽比，缩放到刚好放进 ${SR_BOXES[d.sr_mode].join("×")}（竖图是 ${SR_BOXES[d.sr_mode].slice().reverse().join("×")}）；比例离常见比例（16:9、4:3、3:2、1:1 等）只差 4 像素以内时，直接取整到那个比例。`
+      : `结果是原图的 4 倍大小${S.info.sr && !S.info.sr.have ? "；模型（18 MB）第一次用时自动下载" : ""}。`;
+    $("#srHint").style.color = big ? "var(--warn)" : "";
+  }
   const dirty = !same(d, baseline());
-  $("#pending").hidden = !dirty;
+  $("#pending").hidden = !dirty || S.auto !== "off";
   const everyone = S.items.length > 0 && S.items.every(it => same(it.settings, S.defaults));
   $("#scopePill").textContent = !S.cur ? "新图都用这个" : everyone && same(S.cur.settings, S.defaults) ? "所有图一样" : "这张单独设置";
   $("#scopePill").className = "pill" + (S.cur && !(everyone && same(S.cur.settings, S.defaults)) ? " on" : "");
@@ -674,24 +782,52 @@ function syncSettings() {
 $("#sApisr").onchange = e => editDraft({ apisr: e.target.checked });
 $("#sDrunet").onchange = e => editDraft({ drunet: e.target.checked });
 $("#sL0").onchange = e => editDraft({ l0: e.target.checked });
-for (const [id, key, out] of [["#sAmount", "apisr_amount", v => v + "%"], ["#sSigma", "sigma", v => v], ["#sLam", "lam", fmtLam]]) {
+$("#sSpeck").onchange = e => editDraft({ speck: e.target.checked });
+$("#sSr").onchange = e => editDraft({ sr: e.target.checked });
+for (const b of $$("#srModes button")) b.onclick = () => editDraft({ sr_mode: b.dataset.m });
+for (const [id, key] of [["#sSrW", "sr_w"], ["#sSrH", "sr_h"]]) {
+  $(id).addEventListener("input", e => editDraft({ [key]: px(e.target.value) }));
+  $(id).addEventListener("blur", syncSettings);
+}
+for (const [id, key, out] of [["#sAmount", "apisr_amount", v => v + "%"], ["#sSigma", "sigma", v => v], ["#sLam", "lam", fmtLam],
+  ["#sSpeckSize", "speck_size", v => v + " px"], ["#sSpeckThr", "speck_thr", v => v + "%"], ["#sSpeckRatio", "speck_ratio", v => v + "%"]]) {
   $(id).addEventListener("input", e => { const v = +e.target.value; $(id.replace("#s", "#v")).textContent = out(v); paintRange(e.target); });
   $(id).addEventListener("change", e => editDraft({ [key]: +(+e.target.value).toFixed(key === "lam" ? 4 : 0) }));
 }
 $("#moreBtn").onclick = () => { const open = $("#adv").hidden; $("#adv").hidden = !open; $("#moreBtn").setAttribute("aria-expanded", open); save("adv", open); };
 if (load("adv", false)) { $("#adv").hidden = false; $("#moreBtn").setAttribute("aria-expanded", "true"); }
-$("#resetBtn").onclick = () => { S.draft = { ...DEFAULTS }; syncSettings(); };
-$("#applyOne").onclick = () => {
+$("#resetBtn").onclick = () => { S.draft = { ...DEFAULTS }; syncSettings(); scheduleAuto(); };
+function applyOne(quiet) {
   if (!S.cur) return;
   S.cur.settings = { ...S.draft };
   enqueue(S.cur);
-  syncSettings(); toast(`这张图：${describe(S.draft)}`);
-};
-$("#applyAll").onclick = () => {
+  syncSettings();
+  if (!quiet) toast(`这张图：${describe(S.draft)}`);
+}
+function applyAll(quiet) {
   S.defaults = { ...S.draft }; save("defaults", S.defaults);
   for (const it of S.items) { it.settings = { ...S.draft }; enqueue(it); }
-  syncSettings(); toast(`所有图片${S.items.length ? `（${S.items.length} 张）` : ""}和之后加入的图：${describe(S.draft)}`);
+  syncSettings();
+  if (!quiet) toast(`所有图片${S.items.length ? `（${S.items.length} 张）` : ""}和之后加入的图：${describe(S.draft)}`);
+}
+$("#applyOne").onclick = () => applyOne();
+$("#applyAll").onclick = () => applyAll();
+// auto-apply: a changed setting is applied by itself, to this picture or to all of them, a moment after the last change
+let autoTimer = 0;
+function scheduleAuto() {
+  clearTimeout(autoTimer);
+  if (S.auto === "off") return;
+  autoTimer = setTimeout(() => {
+    if (S.auto === "one") { if (S.cur && !same(S.draft, S.cur.settings)) applyOne(true); }
+    else if (!same(S.draft, S.defaults) || S.items.some(it => !same(it.settings, S.draft))) applyAll(true);
+  }, 350);
+}
+function syncAuto() { for (const b of $$("#autoSeg button")) b.classList.toggle("on", b.dataset.a === S.auto); }
+for (const b of $$("#autoSeg button")) b.onclick = () => {
+  S.auto = b.dataset.a; save("auto", S.auto); syncAuto(); syncSettings(); scheduleAuto();
+  toast(S.auto === "one" ? "自动应用：改了设置就直接用到当前这张图" : S.auto === "all" ? "自动应用：改了设置就直接用到所有图（之后加入的图也用它）" : "自动应用已关：改完设置要点「对该图生效」或「对所有图生效」");
 };
+syncAuto();
 
 /* ---------------- compositing & protection mask ---------------- */
 // weights = the painted strokes (grey = share of the original), widened by a soft edge; painted pixels keep their own value
@@ -720,36 +856,42 @@ function resultImg(it) {  // the result picture, loaded the first time it is nee
   }
   return r.img;
 }
+// Three layers over the original: the result (its own pixels: a super-resolution result is larger than the source and
+// is redrawn only when it changes), the protected parts of the original on top of it, and the tint. The protection
+// layer has the source's size whatever the result's, so painting costs the same with or without super-resolution.
+let resShown = null;
 function composite() {
   const it = S.cur;
   if (!it) return;
-  lRes.width = it.w; lRes.height = it.h;
-  const g = ctx(lRes), res = resultImg(it);
-  g.clearRect(0, 0, it.w, it.h);
-  if (res || it.srcImg) g.drawImage(res || it.srcImg, 0, 0);
-  if (res && it.srcImg && it.hasMask) {
-    buildWeights(it);
-    const a = weightsAsAlpha(it);
-    tmpC.width = it.w; tmpC.height = it.h;
-    const t = ctx(tmpC);
-    t.globalCompositeOperation = "source-over"; t.clearRect(0, 0, it.w, it.h); t.drawImage(it.srcImg, 0, 0);
-    t.globalCompositeOperation = "destination-in"; t.drawImage(a, 0, 0); t.globalCompositeOperation = "source-over";
-    g.drawImage(tmpC, 0, 0);
+  const res = resultImg(it), pic = res || it.srcImg;
+  if (resShown !== pic) {
+    resShown = pic;
+    lRes.width = pic ? pic.naturalWidth : it.w; lRes.height = pic ? pic.naturalHeight : it.h;
+    if (pic) ctx(lRes).drawImage(pic, 0, 0);
   }
-  drawTint();
+  if (lProt.width !== it.w || lProt.height !== it.h) { lProt.width = it.w; lProt.height = it.h; }
+  const g = ctx(lProt);
+  g.globalCompositeOperation = "source-over"; g.clearRect(0, 0, it.w, it.h);
+  let a = null;
+  if (it.hasMask) { buildWeights(it); a = weightsAsAlpha(it); }
+  if (a && res && it.srcImg) {
+    g.drawImage(it.srcImg, 0, 0);
+    g.globalCompositeOperation = "destination-in"; g.drawImage(a, 0, 0); g.globalCompositeOperation = "source-over";
+  }
+  drawTint(a);
   render();
 }
 let rafQueued = false;
 const scheduleComposite = () => { if (!rafQueued) { rafQueued = true; requestAnimationFrame(() => { rafQueued = false; composite(); }); } };
-function drawTint() {
+function drawTint(a) {
   const it = S.cur;
   if (!it) return;
   tint.width = it.w; tint.height = it.h;
   const g = ctx(tint);
   g.clearRect(0, 0, it.w, it.h);
   if (!it.hasMask) return;
-  buildWeights(it);
-  g.drawImage(weightsAsAlpha(it), 0, 0);
+  if (!a) { buildWeights(it); a = weightsAsAlpha(it); }
+  g.drawImage(a, 0, 0);
   g.globalCompositeOperation = "source-in";
   g.fillStyle = `rgba(${getComputedStyle(document.documentElement).getPropertyValue("--mask").trim()}, .55)`;
   g.fillRect(0, 0, it.w, it.h);
@@ -806,11 +948,13 @@ function syncPanel() {
   $("#fThumb").hidden = !(it && it.thumb); $("#fBlank").hidden = !!(it && it.thumb);
   if (it) { if (it.thumb) $("#fThumb").src = it.thumb; $("#fName").textContent = it.name; $("#fName").title = it.name; }
   else $("#fName").textContent = "还没有图片";
-  $("#fDims").textContent = it ? `${it.w} × ${it.h}${it.alpha ? " · 透明背景" : ""}` : "拖进窗口，或按 Ctrl+O 选择";
+  const r = it && it.result, resized = !!r && (r.w !== it.w || r.h !== it.h);
+  $("#fDims").textContent = it ? `${it.w} × ${it.h}${resized ? ` → ${r.w} × ${r.h}` : ""}${it.alpha ? " · 透明背景" : ""}` : "拖进窗口，或按 Ctrl+O 选择";
   syncStatus(); syncSettings();
   $("#dlBtn").disabled = !(it && it.result);
   $("#revealBtn").disabled = !(it && it.saved);
   $("#brushBtn").disabled = !it;
+  $("#autoDiffBtn").disabled = !(it && it.result);
   $("#brushBtn").classList.toggle("on", S.brush.on);
   $("#brushText").textContent = S.brush.on ? "完成涂抹" : "保护笔刷";
   const m = !!(it && it.hasMask);
@@ -888,19 +1032,20 @@ function render() {
   stage.classList.toggle("has", has);
   stage.classList.toggle("paint", has && S.brush.on && !S.space);
   for (const id of ["#frame", "#tagL", "#tagR", "#divider"]) $(id).hidden = !has;
-  for (const el of [lOrig, lRes, tint]) el.style.display = has ? "" : "none";
+  for (const el of [lOrig, lRes, lProt, tint]) el.style.display = has ? "" : "none";
   $("#zPct").textContent = has ? Math.round(S.vp.s * 100) + "%" : "—";
   for (const b of $$("#views button")) { b.classList.toggle("on", b.dataset.v === S.view); b.disabled = !hasOut && b.dataset.v !== "before"; }
   if (!has) { $("#viewHint").textContent = ""; return; }
   const { s, x, y } = S.vp, W = stage.clientWidth;
   const t = `translate(${x}px, ${y}px) scale(${s})`;
-  for (const el of [lOrig, lRes, tint]) { el.style.width = it.w + "px"; el.style.height = it.h + "px"; el.style.transform = t; }
+  for (const el of [lOrig, lRes, lProt, tint]) { el.style.width = it.w + "px"; el.style.height = it.h + "px"; el.style.transform = t; }
   stage.classList.toggle("px", s >= 2);
+  { const k = lRes.width / it.w; lRes.style.imageRendering = k > 1 && s < 2 * k ? "auto" : ""; }  // a larger result shows single pixels later
   Object.assign($("#frame").style, { left: x + "px", top: y + "px", width: it.w * s + "px", height: it.h * s + "px" });
   const v = S.peek || !hasOut ? "before" : S.view;
   lOrig.style.visibility = v === "after" ? "hidden" : "visible";
-  lRes.style.visibility = v === "before" ? "hidden" : "visible";
-  lRes.style.clipPath = v === "cmp" ? `inset(0 0 0 ${Math.max(0, (S.split * W - x) / s)}px)` : "none";
+  lRes.style.visibility = lProt.style.visibility = v === "before" ? "hidden" : "visible";
+  lRes.style.clipPath = lProt.style.clipPath = v === "cmp" ? `inset(0 0 0 ${Math.max(0, (S.split * W - x) / s)}px)` : "none";
   $("#divider").hidden = v !== "cmp"; $("#divider").style.left = S.split * 100 + "%";
   $("#tagL").hidden = v === "after"; $("#tagR").hidden = v === "before";
   $("#tagL").textContent = hasOut ? "原图" : it.status === "running" ? "原图 · 处理中" : "原图 · 排队中";
@@ -967,6 +1112,75 @@ function clearMask() {
   toast("已清除保护区（Ctrl+Z 可撤销）");
 }
 $("#bClear").onclick = $("#clearMask").onclick = clearMask;
+/* ---------------- the changed parts ---------------- */
+// Pixels the processing changed by more than the threshold (largest channel difference, in % of full range), with a
+// one-pixel rim. Worked out once per result and threshold; the canvas has them opaque, for masking a brush stroke.
+function changedMask(it) {
+  const res = it.result && resultImg(it);
+  if (!res || !it.srcImg) return null;
+  const key = it.result.rid + "|" + S.brush.diff;
+  if (it.changed && it.changed.key === key) return it.changed;
+  const w = it.w, h = it.h, c = mk(w, h), g = ctx(c, true);
+  g.drawImage(it.srcImg, 0, 0);
+  const a = g.getImageData(0, 0, w, h).data;
+  g.clearRect(0, 0, w, h); g.imageSmoothingQuality = "high"; g.drawImage(res, 0, 0, w, h);  // a result of another size is compared at the source size
+  const b = g.getImageData(0, 0, w, h).data;
+  const thr = S.brush.diff * 2.55, raw = new Uint8Array(w * h), hit = new Uint8Array(w * h);
+  for (let i = 0, p = 0; p < raw.length; i += 4, p++)
+    if (Math.max(Math.abs(a[i] - b[i]), Math.abs(a[i + 1] - b[i + 1]), Math.abs(a[i + 2] - b[i + 2])) > thr) raw[p] = 1;
+  const img = g.createImageData(w, h), d = img.data;
+  let n = 0;
+  for (let y = 0, p = 0; y < h; y++) for (let x = 0; x < w; x++, p++) {
+    if (!(raw[p] || (x && raw[p - 1]) || (x < w - 1 && raw[p + 1]) || (y && raw[p - w]) || (y < h - 1 && raw[p + w]))) continue;
+    hit[p] = 1; d[p * 4 + 3] = 255; n++;
+  }
+  g.putImageData(img, 0, 0);
+  return it.changed = { key, hit, canvas: c, n };
+}
+const notReady = it => toast(it.result ? "结果还在加载，稍等再试" : "这张图还没处理完，处理完才能找出改动部分");
+// the whole picture at once: every changed pixel goes into the protected area at the current "restore" share
+function autoChanged() {
+  const it = S.cur;
+  if (!it) return;
+  const m = changedMask(it);
+  if (!m) return notReady(it);
+  if (!m.n) return toast(`没有超过阈值（${S.brush.diff}%）的改动；把「改动阈值」调低再试`);
+  if (S.painting) endStroke();
+  pushUndo(it);
+  const w = it.w, h = it.h, pg = ctx(it.paint, true), img = pg.getImageData(0, 0, w, h), d = img.data, v = Math.round(S.brush.mix / 100 * 255);
+  for (let p = 0; p < m.hit.length; p++) if (m.hit[p]) { d[p * 4] = d[p * 4 + 1] = d[p * 4 + 2] = v; d[p * 4 + 3] = 255; }
+  pg.putImageData(img, 0, 0);
+  it.hasMask = true;
+  composite(); scheduleSave(it); syncPanel(); renderStrip();
+  toast(`已涂上改动部分（约占画面 ${(m.n / (w * h) * 100).toFixed(m.n / (w * h) < 0.1 ? 1 : 0)}%，恢复原图 ${S.brush.mix}%）。按住 M 看范围，不该保护的用橡皮擦掉（Ctrl+Z 可撤销）`, "", 6000);
+}
+// the "changed parts" brush: one stroke segment, kept only where the picture was changed
+const segC = mk();
+function paintChanged(it, p, v) {
+  const m = changedMask(it);
+  if (!m) return;
+  if (segC.width !== it.w || segC.height !== it.h) { segC.width = it.w; segC.height = it.h; }
+  const r = S.brush.size / 2 + 2, q = last || p;
+  const x0 = Math.max(0, Math.floor(Math.min(p[0], q[0]) - r)), y0 = Math.max(0, Math.floor(Math.min(p[1], q[1]) - r));
+  const x1 = Math.min(it.w, Math.ceil(Math.max(p[0], q[0]) + r)), y1 = Math.min(it.h, Math.ceil(Math.max(p[1], q[1]) + r));
+  if (x1 <= x0 || y1 <= y0) return;
+  const g = ctx(segC);
+  g.save();
+  g.beginPath(); g.rect(x0, y0, x1 - x0, y1 - y0); g.clip();  // everything below stays inside this segment's box
+  g.clearRect(x0, y0, x1 - x0, y1 - y0);
+  g.strokeStyle = g.fillStyle = `rgb(${v},${v},${v})`;
+  g.lineWidth = S.brush.size; g.lineCap = g.lineJoin = "round";
+  g.beginPath();
+  if (last) { g.moveTo(last[0], last[1]); g.lineTo(p[0], p[1]); g.stroke(); }
+  else { g.arc(p[0], p[1], S.brush.size / 2, 0, Math.PI * 2); g.fill(); }
+  g.globalCompositeOperation = "destination-in";
+  g.drawImage(m.canvas, x0, y0, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0);
+  g.restore();
+  ctx(it.paint, true).drawImage(segC, x0, y0, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0);
+}
+$("#autoDiffBtn").onclick = autoChanged;
+$("#sDiff").value = S.brush.diff; $("#vDiff").textContent = S.brush.diff + "%"; paintRange($("#sDiff"));
+$("#sDiff").oninput = e => { S.brush.diff = +e.target.value; $("#vDiff").textContent = S.brush.diff + "%"; paintRange(e.target); save("diff", S.brush.diff); };
 function anyPaint(it) {
   const d = ctx(it.paint, true).getImageData(0, 0, it.w, it.h).data;
   for (let i = 0; i < d.length; i += 4) if (d[i]) return true;
@@ -976,20 +1190,23 @@ let last = null, stroke = "brush", drag = null, cursorAt = null;
 const toImg = (e, r) => [(e.clientX - r.left - S.vp.x) / S.vp.s, (e.clientY - r.top - S.vp.y) / S.vp.s];
 function paintTo(p) {
   const it = S.cur, g = ctx(it.paint, true), v = stroke === "erase" ? 0 : Math.round(S.brush.mix / 100 * 255);
-  g.strokeStyle = g.fillStyle = `rgb(${v},${v},${v})`;
-  g.lineWidth = S.brush.size; g.lineCap = g.lineJoin = "round";
-  g.beginPath();
-  if (last) { g.moveTo(last[0], last[1]); g.lineTo(p[0], p[1]); g.stroke(); }
-  else { g.arc(p[0], p[1], S.brush.size / 2, 0, Math.PI * 2); g.fill(); }
+  if (stroke === "diff") paintChanged(it, p, v);
+  else {
+    g.strokeStyle = g.fillStyle = `rgb(${v},${v},${v})`;
+    g.lineWidth = S.brush.size; g.lineCap = g.lineJoin = "round";
+    g.beginPath();
+    if (last) { g.moveTo(last[0], last[1]); g.lineTo(p[0], p[1]); g.stroke(); }
+    else { g.arc(p[0], p[1], S.brush.size / 2, 0, Math.PI * 2); g.fill(); }
+  }
   last = p;
-  if (stroke === "brush") it.hasMask = true;
+  if (stroke !== "erase") it.hasMask = true;
   scheduleComposite();
 }
 function endStroke() {
   if (!S.painting) return;
   S.painting = false; S.brush.painting = false; last = null;
   const it = S.cur;
-  if (it) { if (stroke === "erase") it.hasMask = anyPaint(it); composite(); scheduleSave(it); syncPanel(); renderStrip(); }
+  if (it) { if (stroke !== "brush") it.hasMask = anyPaint(it); composite(); scheduleSave(it); syncPanel(); renderStrip(); }
 }
 function moveCursor() {
   const c = $("#cursor");
@@ -1006,6 +1223,7 @@ stage.addEventListener("pointerdown", e => {
   if (e.target.closest("#divider") && !S.brush.on) { drag = { kind: "split" }; stage.setPointerCapture(e.pointerId); return; }
   if (S.brush.on && !S.space && (e.button === 0 || e.button === 2) && S.cur.result) {
     stroke = e.button === 2 ? "erase" : S.brush.tool;
+    if (stroke === "diff" && !changedMask(S.cur)) return notReady(S.cur);
     pushUndo(S.cur);
     S.painting = true; S.brush.painting = true; last = null;
     stage.setPointerCapture(e.pointerId);
@@ -1049,8 +1267,10 @@ addEventListener("keydown", e => {
     x: () => { if (!e.repeat && S.cur.result) { S.view = S.view === "after" ? "before" : "after"; render(); } },
     z: () => { if (!e.repeat) { S.peek = true; render(); } },
     m: () => { if (!e.repeat) { S.brush.peekMask = true; render(); } },
-    b: () => { if (!e.repeat) setBrush(!S.brush.on || S.brush.tool === "erase", "brush"); },
+    b: () => { if (!e.repeat) setBrush(!S.brush.on || S.brush.tool !== "brush", "brush"); },
+    a: () => { if (!e.repeat) autoChanged(); },
     e: () => setBrush(true, "erase"),
+    d: () => { if (!e.repeat) setBrush(!(S.brush.on && S.brush.tool === "diff"), "diff"); },
     escape: () => setBrush(false),
     "[": () => { S.brush.size = Math.max(2, Math.round(S.brush.size / 1.2)); syncBrushBar(); moveCursor(); },
     "]": () => { S.brush.size = Math.min(300, Math.round(S.brush.size * 1.2) + 1); syncBrushBar(); moveCursor(); },
