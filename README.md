@@ -1,5 +1,23 @@
 <p align="center"><img src="docs/icon.png" width="96" alt="Denoise"></p>
 
+## 版本 / Versions
+
+本项目同时维护以下版本，原有 Windows 电脑版的启动方式和功能保持不变。
+
+| 版本 | 位置 | 当前状态 |
+| --- | --- | --- |
+| Windows 电脑版 | 根目录 `Denoise.exe`、`denoise.py`、`server.py`、`web/` | 原有版本；保留 DRUNet、APISR、L0、保护笔刷和批处理 |
+| Android / iPhone 离线版 | [`mobile/`](mobile/) | 开发版原生工程与离线推理代码；尚无已验证的 APK / IPA，不含 APISR |
+| Skill | [`skills/keepcolor-denoise/`](skills/keepcolor-denoise/) | 本地 Python 图片处理技能；DRUNet 与可选 L0，不含 APISR |
+| 插件包定义 | [`plugin.json`](plugin.json) | 纯 Skill 插件配置；尚未提交公开目录审核 |
+
+手机端的模型转换、数值对照和前端构建已通过；原生编译、签名和真机测试尚未完成。手机端暂未移植 L0、保护笔刷、批处理及原始 ICC 保留。构建步骤与限制见 [移动版说明](mobile/README.md)。
+
+Skill 需要可执行 Python 的宿主环境，不代表在任意手机聊天界面中都能直接运行。安装和插件打包见 [技能说明](docs/skills.md)。
+
+---
+
+
 <h1 align="center">Denoise</h1>
 
 <p align="center">在保持原图色彩的前提下，去掉压缩伪影、振铃、摩尔纹和鱼鳞纹。<br>
@@ -49,12 +67,13 @@ Denoise 在**原尺寸**上去噪，不缩小、不重画：线条的位置、�
 ### 页面
 
 - **处理步骤**，依次执行：
+  - **去白噪点**（默认关）：把零星的高亮白点（几个像素大）填平，其他像素不动；细小的真实高光也可能被去掉，可以用保护笔刷留住；
   - **APISR 锐化**（默认关）：会改变原有色彩，页面上有提示；
   - **DRUNet 去噪**（默认开）：原尺寸去伪影、振铃、摩尔纹、鱼鳞纹，不改颜色；
   - **L0 平滑**（默认关）：把色块里残留的细碎起伏压平，很淡的渐变也会被抹平一些。
-  - 点 **更多设置** 展开：APISR 档位（2× RRDB 默认 / 4× RRDB / 4× GRL / 4× DAT，用到才下载）、APISR 强度、DRUNet 强度、L0 强度。
-- **默认只开 DRUNet，并对所有图片生效**。改了设置后点 **对该图生效**（只改当前这张）或 **对所有图生效**（全部，之后放进来的图也用它）才会应用。
-- **保护笔刷**：不想被处理的地方涂上，就按比例换回原图，马上生效；可调大小、恢复比例、柔边，支持橡皮、撤销 / 重做。
+  - 点 **更多设置** 展开：APISR 档位（2× RRDB 默认 / 4× RRDB / 4× GRL / 4× DAT，用到才下载）、APISR 强度、DRUNet 强度、L0 强度，以及白噪点的大小（默认 2 px）、亮度差（默认 10%）和去除比例（默认 100%，调低就随机少去一些，按整个白点取舍）。
+- **默认只开 DRUNet，并对所有图片生效**。改了设置后点 **对该图生效**（只改当前这张）或 **对所有图生效**（全部，之后放进来的图也用它）才会应用；把下面的 **自动应用** 切到「该图」或「所有图」，改了设置就直接应用，不用再点。
+- **保护笔刷**：不想被处理的地方涂上，就按比例换回原图，马上生效；可调大小、恢复比例、柔边，支持橡皮、撤销 / 重做。笔刷的 **「改动」模式**（`D`，涂抹修改部分）只把笔刷扫过处被处理改动过的像素（差别超过「改动阈值」）放进保护区，没被改动的像素不涂；**自动涂改动部分**（`A`）则是整张图一次涂上，不该保护的再用橡皮擦掉。
 - **对比**：左右分割线、原图 / 结果切换、按住 `Z` 看原图、滚轮缩放、拖动平移。
 - **浅色 / 深色**：跟随系统，或在右上角切换。
 - **输出**：结果自动保存为 `<原文件名>_clean.png`，默认在本文件夹的 `output`，右上角「输出」可以改成别的文件夹或恢复默认。透明背景和色彩配置会保留。
@@ -65,12 +84,14 @@ Denoise 在**原尺寸**上去噪，不缩小、不重画：线条的位置、�
 runtime\venv\Scripts\python denoise.py photo.png                 # 默认：只开 DRUNet，结果在 output\
 runtime\venv\Scripts\python denoise.py a.png b.jpg --apisr --l0   # APISR → DRUNet → L0
 runtime\venv\Scripts\python denoise.py folder --out clean --sigma 14
+runtime\venv\Scripts\python denoise.py photo.png --despeckle      # 先去白噪点，再 DRUNet（--speck-size / --speck-thr / --speck-ratio 可调）
 runtime\venv\Scripts\python denoise.py --help
 ```
 
 ## 原理
 
 - **DRUNet 像素重排去噪**：伪影的相邻像素是相关的，隔一个像素就基本不相关。把图按 2×2 拆成 4 张隔点小图，伪影在小图里就变成了接近白噪声的东西，交给高斯去噪网络 DRUNet 干净地去掉，再拼回原图、轻扫一遍消除拼接痕迹。全程原尺寸，不缩放、不重画，颜色不变。
+- **去白噪点**：白噪点在每个方向上都很短，细高光线和边缘至少在一个方向上是长的。用四个方向的线形开运算得到「没有噪点的画面」，比它亮出阈值的像素就是噪点，再用周围没被选中的像素填平；其余像素不变。
 - **APISR**：动漫 / 插画修复网络，在原尺寸上分块运行、每块放大后立刻缩回，再按强度和原图混合。
 - **L0 平滑**：L0 梯度最小化（Xu et al., *Image Smoothing via L0 Gradient Minimization*, SIGGRAPH Asia 2011），只保留值得保留的边缘，把色块内部压平。
 

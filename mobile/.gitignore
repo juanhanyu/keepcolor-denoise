@@ -1,0 +1,9 @@
+node_modules/
+dist/
+public/ort/
+public/*.onnx
+public/*.data
+android/.gradle/
+android/local.properties
+android/app/build/
+ios/App/App/public/
