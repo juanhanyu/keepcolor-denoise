@@ -1,0 +1,18 @@
+name: 功能建议 / Feature Request
+description: 提出新功能、参数或易用性改进建议 / Suggest an enhancement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 希望解决什么问题 / Problem
+      placeholder: 描述你遇到的具体修图场景或使用痛点。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望方案 / Proposed Solution
+      placeholder: 你希望增加怎样的功能或交互方式？
+    validations:
+      required: true

@@ -1,10 +1,27 @@
-# runtime, models and results are made on each computer
+# Compiled launcher (built by launcher/build.cmd and distributed via GitHub Releases)
+/Denoise.exe
+
+# Runtime, models and results created on each computer
 runtime/
 models/
 output/
+tests_out/
 config.json
-__pycache__/
 *.part
+
+# Python / build / test caches
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+dist/
+build/
+
+# OS & editor artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
 
 # Private signing material
 *.jks

@@ -1,7 +1,24 @@
+# Line endings
 * text=auto
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
 *.cs text eol=crlf
+*.sh text eol=lf
+mobile/android/gradlew text eol=lf
+mobile/android/gradlew.bat text eol=crlf
+
+# Binary files
 *.exe binary
 *.ico binary
 *.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.jar binary
+
+# GitHub Linguist: keep repository primary language accurate (Python)
+web/index.html linguist-detectable=false
+mobile/package-lock.json linguist-generated=true
+mobile/android/gradle/** linguist-vendored
+mobile/ios/App/App.xcodeproj/** linguist-generated=true
+compare/** linguist-documentation=true

@@ -6,7 +6,7 @@
 
 | 版本 | 位置 | 当前状态 |
 | --- | --- | --- |
-| Windows 电脑版 | 根目录 `Denoise.exe`、`denoise.py`、`server.py`、`web/` | 原有版本；保留 DRUNet、APISR、L0、保护笔刷和批处理 |
+| Windows 电脑版 | [Releases](https://github.com/juanhanyu/keepcolor-denoise/releases) 便携包（含 `Denoise.exe`）及根目录 `denoise.py`、`server.py`、`web/` | 原有版本；保留 DRUNet、APISR、L0、保护笔刷和批处理 |
 | Android / iPhone 离线版 | [`mobile/`](mobile/) | 开发版原生工程与离线推理代码；尚无已验证的 APK / IPA，不含 APISR |
 | Skill | [`skills/keepcolor-denoise/`](skills/keepcolor-denoise/) | 本地 Python 图片处理技能；DRUNet 与可选 L0，不含 APISR |
 | 插件包定义 | [`plugin.json`](plugin.json) | 纯 Skill 插件配置；尚未提交公开目录审核 |
@@ -53,7 +53,7 @@ Denoise 在**原尺寸**上去噪，不缩小、不重画：线条的位置、�
 
 ## 使用
 
-1. 下载本仓库（**Code → Download ZIP** 后解压，或 `git clone`）。
+1. 前往 [Releases](https://github.com/juanhanyu/keepcolor-denoise/releases) 下载最新的 Windows 便携包（`KeepColor-Denoise-*-windows-x64.zip`）并解压（如从源码 `git clone` 获取，可先运行 `launcher\build.cmd` 生成 `Denoise.exe`）。
 2. 双击 **`Denoise.exe`**。
 3. 第一次运行会弹窗确认，然后自动准备运行环境（有进度窗口，装完自动打开）：
    - **NVIDIA 显卡**：CUDA 版 PyTorch，自动选驱动能跑的最新版本（只需要显卡驱动，不用装 CUDA Toolkit）；

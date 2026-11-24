@@ -1,0 +1,39 @@
+name: 问题反馈 / Bug Report
+description: 反馈安装失败、运行报错或处理异常 / Report a crash, setup error, or unexpected result
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请尽量补充硬件与报错信息，便于快速定位。
+  - type: dropdown
+    id: component
+    attributes:
+      label: 使用的版本 / Component
+      options:
+        - Windows 电脑版（Releases 便携包 / Denoise.exe）
+        - 命令行（denoise.py）
+        - Skill / 插件（skills/keepcolor-denoise）
+        - 移动端开发版（mobile/）
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 系统与显卡环境 / OS & GPU
+      placeholder: 例如：Windows 11 / RTX 4070（或 RX 7800 XT / 仅 CPU）
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤与现象 / Steps to Reproduce
+      placeholder: 描述你的操作步骤、使用的参数档位，以及实际发生了什么。
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 报错信息或日志 / Logs
+      description: 若为电脑版，可附上 runtime/server.log 末尾几行或安装窗口报错截图。
+      render: text

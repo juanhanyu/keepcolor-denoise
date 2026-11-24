@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.0.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Windows package & publish GitHub Release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        id: meta
+        shell: pwsh
+        run: |
+          $tag = if ("${{ github.event_name }}" -eq "workflow_dispatch") { "${{ inputs.tag }}" } else { "${{ github.ref_name }}" }
+          if (-not ($tag -match '^v[0-9]')) { throw "Invalid tag '$tag'. Expected format like v1.0.0." }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Release tag: $tag"
+
+      - name: Build Denoise.exe
+        shell: cmd
+        run: launcher\build.cmd
+
+      - name: Stage Windows portable package & Skill plugin package
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.meta.outputs.tag }}"
+          $dist = Join-Path $PWD "dist"
+          $winStage = Join-Path $dist "win-stage\KeepColor-Denoise"
+          $skillStage = Join-Path $dist "skill-stage"
+          New-Item -ItemType Directory -Force -Path $winStage, (Join-Path $winStage "launcher"), $skillStage | Out-Null
+
+          # Windows portable bundle: only files required for desktop execution (excludes mobile/ and compare/)
+          Copy-Item "Denoise.exe" $winStage
+          Get-ChildItem -Path $PWD -File -Filter "*.py" | Copy-Item -Destination $winStage
+          foreach ($f in @("requirements.txt", "LICENSE", "README.md")) {
+            if (Test-Path $f) { Copy-Item $f $winStage }
+          }
+          Copy-Item "web" $winStage -Recurse
+          Copy-Item "launcher\setup.ps1" (Join-Path $winStage "launcher")
+
+          # Validate launcher runtime dependencies inside the staged folder
+          foreach ($req in @("Denoise.exe", "server.py", "denoise.py", "setup_env.py", "requirements.txt", "launcher\setup.ps1", "web\index.html")) {
+            if (-not (Test-Path (Join-Path $winStage $req))) { throw "Missing required runtime file in package: $req" }
+          }
+
+          $winZip = Join-Path $dist "KeepColor-Denoise-$tag-windows-x64.zip"
+          Compress-Archive -Path $winStage -DestinationPath $winZip -CompressionLevel Optimal -Force
+
+          # Skill plugin bundle (per docs/skills.md: plugin.json + skills/ at archive root)
+          Copy-Item "plugin.json" $skillStage
+          Copy-Item "skills" $skillStage -Recurse
+          Get-ChildItem -Path $skillStage -Recurse -Force -Include "__pycache__", "*.pyc" | Remove-Item -Recurse -Force
+          $skillZip = Join-Path $dist "keepcolor-denoise-skill-$tag.zip"
+          Compress-Archive -Path (Join-Path $skillStage "*") -DestinationPath $skillZip -CompressionLevel Optimal -Force
+
+          # Checksums
+          $artifacts = @($winZip, $skillZip)
+          $lines = foreach ($a in $artifacts) {
+            $h = (Get-FileHash -Path $a -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$h  $(Split-Path -Leaf $a)"
+          }
+          $sums = Join-Path $dist "SHA256SUMS.txt"
+          $lines | Set-Content -Path $sums -Encoding ascii
+          Get-Content $sums
+
+      - name: Create or update GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ steps.meta.outputs.tag }}"
+          $winZip = "dist/KeepColor-Denoise-$tag-windows-x64.zip"
+          $skillZip = "dist/keepcolor-denoise-skill-$tag.zip"
+          $sums = "dist/SHA256SUMS.txt"
+
+          $notes = @"
+          ### 下载说明 / Downloads
+
+          - **Windows 电脑版便携包**：下载 ``KeepColor-Denoise-$tag-windows-x64.zip``，解压后双击 ``Denoise.exe`` 即可启动（首次运行自动配置本地环境与模型）。
+          - **Skill 插件包**：下载 ``keepcolor-denoise-skill-$tag.zip``（根目录包含 ``plugin.json`` 与 ``skills/``）。
+          - **构建透明度**：本发行版中的 ``Denoise.exe`` 由 GitHub Actions 直接从公开源码 ``launcher/Denoise.cs`` 编译生成，所有压缩包均附带 ``SHA256SUMS.txt`` 校验值。
+          "@
+
+          $exists = $true
+          try {
+            gh release view $tag *> $null
+            if ($LASTEXITCODE -ne 0) { $exists = $false }
+          } catch { $exists = $false }
+
+          if ($exists) {
+            gh release upload $tag $winZip $skillZip $sums --clobber
+          } else {
+            gh release create $tag $winZip $skillZip $sums `
+              --title "KeepColor Denoise $tag" `
+              --notes $notes `
+              --generate-notes
+          }
